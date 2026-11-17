@@ -4,9 +4,14 @@
 
 프로젝트 전체에 관련된 내용은 [프로젝트 README](../README.md) 에서 확인합니다.
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## 기술 스택
+
+Next 16.4.6, React 19.3.0, tailwindcss 4.3.3
+
 
 ## Getting Started
+
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 First, run the development server:
 

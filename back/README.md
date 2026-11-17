@@ -3,7 +3,10 @@
 해당 README 문서에서는 백엔드에 해당하는 내용만 기술합니다.
 
 프로젝트 전체에 관련된 내용은 [프로젝트 README](../README.md) 에서 확인합니다.
- 
+
+## 기술 스택
+
+java 25, kotlin 2.3.21, Spring Boot 4.1.2
 
 ## 로컬 백엔드 URL  `http://localhost:8080`
 
@@ -27,6 +30,3 @@
 
 루트폴더의 `docker-compose.yml` 파일의 설정으로  
 MySQL DB, Prometheus, Grafana 와 그 볼륨들을 도커컨테이너 내에 생성합니다.
-
-
-
