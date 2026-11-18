@@ -1,3 +1,4 @@
+
 name: develop pr test
 
 on:
@@ -7,66 +8,53 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: pull-request-ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  # 1. 변경된 파일 경로 감지 Job
-  changes:
-    name: Detect Changed Folders
+  # 1. 백엔드 CI
+  back-check:
+    name: Check the Backend for CI
     runs-on: ubuntu-latest
-    outputs:
-      back: ${{ steps.filter.outputs.back }}
-      front: ${{ steps.filter.outputs.front }}
+    defaults:
+      run:
+        working-directory: back
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Filter changed paths
-        uses: dorny/paths-filter@v3
+      - name: Detect backend changes
         id: filter
+        uses: dorny/paths-filter@v3
         with:
           filters: |
             back:
               - 'back/**'
               - '.github/workflows/ci.yml'
-            front:
-              - 'front/**'
-              - '.github/workflows/ci.yml'
-
-  # 2. 백엔드 CI (Gradle 빌드 캐시 최적화)
-  back-check:
-    name: Check the Backend for CI
-    needs: changes
-    if: ${{ needs.changes.outputs.back == 'true' }}
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: back
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
 
       - name: Set up Java 25
+        if: ${{ steps.filter.outputs.back == 'true' }}
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '25'
 
-      # Gradle 전용 캐싱 및 빌드 최적화 액션
       - name: Setup Gradle
+        if: ${{ steps.filter.outputs.back == 'true' }}
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-home-cache-cleanup: true
 
-      # --build-cache 옵션으로 이전 빌드 산출물 재사용
       - name: Run all backend tests
-        run: ./gradlew test --build-cache
+        if: ${{ steps.filter.outputs.back == 'true' }}
+        run: bash ./gradlew test --build-cache
 
       - name: Upload backend test reports
-        if: ${{ failure() }}
+        if: ${{ failure() && steps.filter.outputs.back == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: back-test-reports
@@ -77,31 +65,40 @@ jobs:
           if-no-files-found: warn
 
       - name: Report backend success
-        if: ${{ success() }}
+        if: ${{ success() && steps.filter.outputs.back == 'true' }}
         run: echo "🎉 Backend CI checks passed successfully."
 
-  # 3. 프론트엔드 CI (npm + 프레임워크/린트 증분 캐시 최적화)
+  # 2. 프론트엔드 CI
   front-check:
     name: Check the Frontend for CI
-    needs: changes
-    if: ${{ needs.changes.outputs.front == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: front
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Detect frontend changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            front:
+              - 'front/**'
+              - '.github/workflows/ci.yml'
+
       - name: Set up Node.js 22
+        if: ${{ steps.filter.outputs.front == 'true' }}
         uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: front/package-lock.json
 
-      # 빌드/린트 증분 캐시 복원 및 저장 (Next.js, Vite, ESLint 등)
       - name: Cache frontend build & lint outputs
+        if: ${{ steps.filter.outputs.front == 'true' }}
         uses: actions/cache@v4
         with:
           path: |
@@ -114,19 +111,22 @@ jobs:
             ${{ runner.os }}-front-build-${{ hashFiles('front/package-lock.json') }}-
             ${{ runner.os }}-front-build-
 
-      # --prefer-offline으로 캐시 우선 참조 및 네트워크 왕복 최소화
       - name: Install dependencies
+        if: ${{ steps.filter.outputs.front == 'true' }}
         run: npm ci --prefer-offline --no-audit
 
       - name: Run lint
+        if: ${{ steps.filter.outputs.front == 'true' }}
         run: npm run lint
 
       - name: Run type check
+        if: ${{ steps.filter.outputs.front == 'true' }}
         run: npm run typecheck
 
       - name: Build frontend
+        if: ${{ steps.filter.outputs.front == 'true' }}
         run: npm run build
 
       - name: Report frontend success
-        if: ${{ success() }}
+        if: ${{ success() && steps.filter.outputs.front == 'true' }}
         run: echo "🎉 Frontend CI checks passed successfully."
