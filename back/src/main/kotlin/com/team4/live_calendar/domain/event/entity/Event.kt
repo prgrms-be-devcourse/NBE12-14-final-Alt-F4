@@ -1,11 +1,15 @@
 package com.team4.live_calendar.domain.event.entity
 
+import com.team4.live_calendar.domain.user.entity.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EntityListeners
+import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.JoinColumn
+import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedDate
@@ -19,7 +23,7 @@ import java.util.UUID
 class Event protected constructor(
     calendarId: Long,
     categoryId: Long?,
-    userId: Long,
+    user: User,
     title: String,
     description: String?,
     location: String?,
@@ -43,8 +47,9 @@ class Event protected constructor(
     var categoryId: Long? = categoryId
         protected set
 
-    @Column(name = "user_id", nullable = false, updatable = false)
-    var userId: Long = userId
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false, updatable = false)
+    var user: User = user
         protected set
 
     @Column(name = "uid", nullable = false, updatable = false)
@@ -122,7 +127,7 @@ class Event protected constructor(
         fun create(
             calendarId: Long,
             categoryId: Long?,
-            userId: Long,
+            user: User,
             title: String,
             description: String?,
             location: String?,
@@ -135,7 +140,7 @@ class Event protected constructor(
             Event(
                 calendarId = calendarId,
                 categoryId = categoryId,
-                userId = userId,
+                user = user,
                 title = title.trim(),
                 description = description,
                 location = location,

@@ -1,6 +1,8 @@
 package com.team4.live_calendar.domain.event.repository
 
 import com.team4.live_calendar.domain.event.entity.Event
+import com.team4.live_calendar.domain.user.entity.User
+import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.config.JpaConfig
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
@@ -19,13 +21,16 @@ import kotlin.test.assertTrue
 @Import(JpaConfig::class)
 class EventRepositoryTest(
     @Autowired private val eventRepository: EventRepository,
+    @Autowired private val userRepository: UserRepository,
     @Autowired private val em: EntityManager,
 ) {
+
+    private val user by lazy { userRepository.save(User.signUp("event@mail.com", "{bcrypt}hash", "작성자")) }
 
     private fun createEvent(title: String = "팀 회의", rrule: String? = null) = Event.create(
         calendarId = 1L,
         categoryId = null,
-        userId = 1L,
+        user = user,
         title = title,
         description = null,
         location = null,
@@ -50,6 +55,7 @@ class EventRepositoryTest(
         em.clear()
         val found = eventRepository.findById(saved.id!!).get()
 
+        assertEquals(user.id, found.user.id)
         assertFalse(found.isAllDay)
         assertEquals("UTC", found.timezone)
         assertNull(found.rrule)
