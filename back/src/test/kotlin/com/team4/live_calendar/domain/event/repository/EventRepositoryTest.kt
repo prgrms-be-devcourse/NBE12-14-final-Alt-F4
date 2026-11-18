@@ -1,5 +1,7 @@
 package com.team4.live_calendar.domain.event.repository
 
+import com.team4.live_calendar.domain.calendar.entity.Calendar
+import com.team4.live_calendar.domain.calendar.repository.CalendarRepository
 import com.team4.live_calendar.domain.event.entity.Event
 import com.team4.live_calendar.domain.user.entity.User
 import com.team4.live_calendar.domain.user.repository.UserRepository
@@ -22,14 +24,16 @@ import kotlin.test.assertTrue
 class EventRepositoryTest(
     @Autowired private val eventRepository: EventRepository,
     @Autowired private val userRepository: UserRepository,
+    @Autowired private val calendarRepository: CalendarRepository,
     @Autowired private val em: EntityManager,
 ) {
 
     private val user by lazy { userRepository.save(User.signUp("event@mail.com", "{bcrypt}hash", "작성자")) }
+    private val calendar by lazy { calendarRepository.save(Calendar.create("팀 캘린더", null, null)) }
 
     private fun createEvent(title: String = "팀 회의", rrule: String? = null) = Event.create(
-        calendarId = 1L,
-        categoryId = null,
+        calendar = calendar,
+        category = null,
         user = user,
         title = title,
         description = null,
@@ -56,6 +60,7 @@ class EventRepositoryTest(
         val found = eventRepository.findById(saved.id!!).get()
 
         assertEquals(user.id, found.user.id)
+        assertEquals(calendar.id, found.calendar.id)
         assertFalse(found.isAllDay)
         assertEquals("UTC", found.timezone)
         assertNull(found.rrule)
@@ -96,7 +101,7 @@ class EventRepositoryTest(
             startAt = before.startAt,
             endAt = before.endAt,
             isAllDay = before.isAllDay,
-            categoryId = before.categoryId,
+            category = before.category,
         )
         eventRepository.saveAndFlush(before)
         em.clear()
