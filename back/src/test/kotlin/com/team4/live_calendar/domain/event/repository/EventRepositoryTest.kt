@@ -80,6 +80,8 @@ class EventRepositoryTest(
         val saved = eventRepository.saveAndFlush(createEvent())
         em.clear()
         val before = eventRepository.findById(saved.id!!).get()
+        val createdAtBefore = before.createdAt!!
+        val updatedAtBefore = before.updatedAt!!
 
         before.title = "제목 변경"
         eventRepository.saveAndFlush(before)
@@ -87,7 +89,7 @@ class EventRepositoryTest(
         val after = eventRepository.findById(saved.id!!).get()
 
         assertEquals("제목 변경", after.title)
-        assertEquals(before.createdAt, after.createdAt)
-        assertFalse(after.updatedAt!!.isBefore(before.updatedAt))
+        assertEquals(createdAtBefore, after.createdAt)
+        assertFalse(after.updatedAt!!.isBefore(updatedAtBefore))
     }
 }
