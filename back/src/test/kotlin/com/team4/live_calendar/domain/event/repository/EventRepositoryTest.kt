@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
 import org.springframework.context.annotation.Import
-import java.time.LocalDateTime
+import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
@@ -22,15 +22,15 @@ class EventRepositoryTest(
     @Autowired private val em: EntityManager,
 ) {
 
-    private fun createEvent(title: String = "팀 회의", rrule: String? = null) = Event(
+    private fun createEvent(title: String = "팀 회의", rrule: String? = null) = Event.create(
         calendarId = 1L,
         categoryId = null,
-        createdBy = 1L,
+        userId = 1L,
         title = title,
         description = null,
         location = null,
-        startAt = LocalDateTime.of(2026, 11, 18, 10, 0),
-        endAt = LocalDateTime.of(2026, 11, 18, 11, 0),
+        startAt = Instant.parse("2026-11-18T10:00:00Z"),
+        endAt = Instant.parse("2026-11-18T11:00:00Z"),
         rrule = rrule,
     )
 
@@ -80,16 +80,24 @@ class EventRepositoryTest(
         val saved = eventRepository.saveAndFlush(createEvent())
         em.clear()
         val before = eventRepository.findById(saved.id!!).get()
-        val createdAtBefore = before.createdAt!!
-        val updatedAtBefore = before.updatedAt!!
+        val createdAtBefore = before.createdAt
+        val updatedAtBefore = before.updatedAt
 
-        before.title = "제목 변경"
+        before.update(
+            title = "제목 변경",
+            description = before.description,
+            location = before.location,
+            startAt = before.startAt,
+            endAt = before.endAt,
+            isAllDay = before.isAllDay,
+            categoryId = before.categoryId,
+        )
         eventRepository.saveAndFlush(before)
         em.clear()
         val after = eventRepository.findById(saved.id!!).get()
 
         assertEquals("제목 변경", after.title)
         assertEquals(createdAtBefore, after.createdAt)
-        assertFalse(after.updatedAt!!.isBefore(updatedAtBefore))
+        assertFalse(after.updatedAt.isBefore(updatedAtBefore))
     }
 }
