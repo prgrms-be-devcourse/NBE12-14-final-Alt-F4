@@ -44,7 +44,7 @@ class ErdMappingTest(
     fun `모든 테이블의 컬럼 이름과 NULL 허용 여부가 ERD와 같다`() {
         val rows = em.createNativeQuery(
             "SELECT LOWER(table_name), LOWER(column_name), is_nullable " +
-                "FROM information_schema.columns WHERE table_schema = 'PUBLIC'",
+                "FROM information_schema.columns WHERE table_schema = DATABASE()",
         ).resultList.map { it as Array<*> }
 
         val actual = rows

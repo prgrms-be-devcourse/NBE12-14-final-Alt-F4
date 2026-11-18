@@ -38,3 +38,7 @@ management:
   metrics:
     tags:
       application: live-calendar
+app:
+  cors:
+    allowed-origins:
+      - http://localhost:3000
