@@ -1,5 +1,7 @@
 package com.team4.live_calendar.domain.event.entity
 
+import com.team4.live_calendar.domain.calendar.entity.Calendar
+import com.team4.live_calendar.domain.category.entity.EventCategory
 import com.team4.live_calendar.domain.user.entity.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -21,8 +23,8 @@ import java.util.UUID
 @EntityListeners(AuditingEntityListener::class)
 @Table(name = "events")
 class Event protected constructor(
-    calendarId: Long,
-    categoryId: Long?,
+    calendar: Calendar,
+    category: EventCategory?,
     user: User,
     title: String,
     description: String?,
@@ -39,12 +41,14 @@ class Event protected constructor(
     var id: Long? = null
         protected set
 
-    @Column(name = "calendar_id", nullable = false, updatable = false)
-    var calendarId: Long = calendarId
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "calendar_id", nullable = false, updatable = false)
+    var calendar: Calendar = calendar
         protected set
 
-    @Column(name = "category_id")
-    var categoryId: Long? = categoryId
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    var category: EventCategory? = category
         protected set
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -110,7 +114,7 @@ class Event protected constructor(
         startAt: Instant,
         endAt: Instant,
         isAllDay: Boolean,
-        categoryId: Long?,
+        category: EventCategory?,
     ) {
         this.title = title.trim()
         this.description = description
@@ -118,15 +122,15 @@ class Event protected constructor(
         this.startAt = startAt
         this.endAt = endAt
         this.isAllDay = isAllDay
-        this.categoryId = categoryId
+        this.category = category
     }
 
     companion object {
         const val DEFAULT_TIMEZONE = "UTC"
 
         fun create(
-            calendarId: Long,
-            categoryId: Long?,
+            calendar: Calendar,
+            category: EventCategory?,
             user: User,
             title: String,
             description: String?,
@@ -138,8 +142,8 @@ class Event protected constructor(
             rrule: String? = null,
         ): Event =
             Event(
-                calendarId = calendarId,
-                categoryId = categoryId,
+                calendar = calendar,
+                category = category,
                 user = user,
                 title = title.trim(),
                 description = description,
