@@ -10,11 +10,6 @@ spring:
         jdbc:
           time_zone: UTC
 
-app:
-  cors:
-    allowed-origins:
-      - http://localhost:3000
-
 management:
   endpoints:
     web:
