@@ -1,7 +1,9 @@
 package com.team4.live_calendar.domain.auth.controller
 
+import com.team4.live_calendar.domain.auth.dto.LoginRequest
 import com.team4.live_calendar.domain.auth.dto.SignupRequest
 import com.team4.live_calendar.domain.auth.dto.SignupResponse
+import com.team4.live_calendar.domain.auth.dto.TokenResponse
 import com.team4.live_calendar.domain.auth.service.AuthService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -17,4 +19,9 @@ class AuthController(
     @ResponseStatus(HttpStatus.CREATED)
     fun signup(@Valid @RequestBody request: SignupRequest): SignupResponse =
         authService.signup(request)
+
+    @PostMapping("/login")
+    fun login(@Valid @RequestBody request: LoginRequest): TokenResponse =
+        authService.login(request)
+
 }
