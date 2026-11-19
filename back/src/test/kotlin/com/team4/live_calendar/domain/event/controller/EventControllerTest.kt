@@ -1,0 +1,291 @@
+package com.team4.live_calendar.domain.event.controller
+
+import com.team4.live_calendar.domain.calendar.entity.Calendar
+import com.team4.live_calendar.domain.calendar.entity.CalendarGroup
+import com.team4.live_calendar.domain.calendar.entity.CalendarRole
+import com.team4.live_calendar.domain.calendar.entity.Subscribe
+import com.team4.live_calendar.domain.event.dto.EventCreateRequest
+import com.team4.live_calendar.domain.event.dto.EventResponse
+import com.team4.live_calendar.domain.event.service.EventService
+import com.team4.live_calendar.domain.user.entity.User
+import jakarta.persistence.EntityManager
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.http.MediaType
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.delete
+import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.patch
+import org.springframework.test.web.servlet.post
+import org.springframework.transaction.annotation.Transactional
+import java.time.OffsetDateTime
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@Transactional
+class EventControllerTest(
+    @Autowired private val mockMvc: MockMvc,
+    @Autowired private val eventService: EventService,
+    @Autowired private val em: EntityManager,
+) {
+
+    private lateinit var owner: User
+    private lateinit var viewer: User
+    private lateinit var calendar: Calendar
+
+    @BeforeEach
+    fun setUp() {
+        owner = persist(User.signUp("owner@mail.com", "{bcrypt}hash", "소유자"))
+        viewer = persist(User.signUp("viewer@mail.com", "{bcrypt}hash", "보기만"))
+        calendar = persist(Calendar.create("팀 캘린더", null, null))
+        subscribe(owner, CalendarRole.OWNER)
+        subscribe(viewer, CalendarRole.VIEWER)
+    }
+
+    private fun <T : Any> persist(entity: T): T = entity.also { em.persist(it) }
+
+    private fun subscribe(user: User, role: CalendarRole): Subscribe {
+        val group = persist(CalendarGroup.create(user, "내 캘린더", null))
+        return persist(Subscribe.create(user, group, calendar, role, null))
+    }
+
+    // 로그인 API가 아직 없어서, Authentication.name = 회원 ID 인 인증 상태를 직접 넣는다
+    private fun loginAs(user: User) =
+        authentication(UsernamePasswordAuthenticationToken(user.id.toString(), null, emptyList()))
+
+    private fun timedEventJson(title: String = "팀 회의") = """
+        {"calendarId": ${calendar.id}, "title": "$title",
+         "startAt": "2026-11-18T14:00:00+09:00", "endAt": "2026-11-18T15:00:00+09:00"}
+    """
+
+    private fun createEvent(): EventResponse =
+        eventService.create(
+            owner.id!!,
+            EventCreateRequest(
+                calendarId = calendar.id!!,
+                categoryId = null,
+                title = "팀 회의",
+                description = null,
+                location = null,
+                startAt = OffsetDateTime.parse("2026-11-18T14:00:00+09:00"),
+                endAt = OffsetDateTime.parse("2026-11-18T15:00:00+09:00"),
+            ),
+        )
+
+    // ===== 생성 =====
+
+    @Test
+    fun `일정을 생성하면 201과 UTC 시간으로 바뀐 일정을 반환한다`() {
+        // when
+        val result = mockMvc.post("/api/v1/events") {
+            with(loginAs(owner))
+            contentType = MediaType.APPLICATION_JSON
+            content = timedEventJson()
+        }
+
+        // then
+        result.andExpect {
+            status { isCreated() }
+            jsonPath("$.id") { exists() }
+            jsonPath("$.title") { value("팀 회의") }
+            jsonPath("$.calendarId") { value(calendar.id!!) }
+            jsonPath("$.userId") { value(owner.id!!) }
+            jsonPath("$.isAllDay") { value(false) }
+            jsonPath("$.startAt") { value("2026-11-18T05:00:00Z") }
+            jsonPath("$.endAt") { value("2026-11-18T06:00:00Z") }
+            jsonPath("$.timezone") { value("UTC") }
+        }
+    }
+
+    @Test
+    fun `종일 일정은 보낸 날짜 그대로 UTC 자정으로 저장된다`() {
+        // when
+        val result = mockMvc.post("/api/v1/events") {
+            with(loginAs(owner))
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {"calendarId": ${calendar.id}, "title": "워크숍", "isAllDay": true,
+                 "startDate": "2026-11-18", "endDate": "2026-11-19"}
+            """
+        }
+
+        // then
+        result.andExpect {
+            status { isCreated() }
+            jsonPath("$.isAllDay") { value(true) }
+            jsonPath("$.startAt") { value("2026-11-18T00:00:00Z") }
+            jsonPath("$.endAt") { value("2026-11-20T00:00:00Z") }
+        }
+    }
+
+    @Test
+    fun `제목이 비어 있으면 400 INVALID_INPUT`() {
+        // when
+        val result = mockMvc.post("/api/v1/events") {
+            with(loginAs(owner))
+            contentType = MediaType.APPLICATION_JSON
+            content = timedEventJson(title = "  ")
+        }
+
+        // then
+        result.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_INPUT") }
+            jsonPath("$.errors[0].field") { value("title") }
+        }
+    }
+
+    @Test
+    fun `VIEWER가 일정을 생성하면 403 FORBIDDEN`() {
+        // when
+        val result = mockMvc.post("/api/v1/events") {
+            with(loginAs(viewer))
+            contentType = MediaType.APPLICATION_JSON
+            content = timedEventJson()
+        }
+
+        // then
+        result.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("FORBIDDEN") }
+        }
+    }
+
+    @Test
+    fun `로그인하지 않으면 일정 API를 호출할 수 없다`() {
+        // when
+        val result = mockMvc.post("/api/v1/events") {
+            contentType = MediaType.APPLICATION_JSON
+            content = timedEventJson()
+        }
+
+        // then: 아직 인증 실패 처리기가 없어서 Security가 403으로 막는다 (로그인 구현 후 401로 바뀔 수 있음)
+        result.andExpect { status { isForbidden() } }
+    }
+
+    // ===== 조회 =====
+
+    @Test
+    fun `일정 상세를 조회한다`() {
+        // given
+        val created = createEvent()
+
+        // when
+        val result = mockMvc.get("/api/v1/events/${created.id}") { with(loginAs(viewer)) }
+
+        // then
+        result.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(created.id) }
+            jsonPath("$.title") { value("팀 회의") }
+        }
+    }
+
+    @Test
+    fun `없는 일정을 조회하면 404 EVENT_NOT_FOUND`() {
+        // when
+        val result = mockMvc.get("/api/v1/events/-1") { with(loginAs(owner)) }
+
+        // then
+        result.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("EVENT_NOT_FOUND") }
+        }
+    }
+
+    @Test
+    fun `기간과 겹치는 일정 목록을 조회한다`() {
+        // given
+        val created = createEvent()
+
+        // when: 쿼리 파라미터의 +는 공백으로 바뀌므로 UTC(Z) 형식으로 보낸다
+        val result = mockMvc.get("/api/v1/events") {
+            with(loginAs(owner))
+            param("from", "2026-11-17T15:00:00Z")
+            param("to", "2026-11-18T15:00:00Z")
+            param("calendarIds", calendar.id.toString())
+        }
+
+        // then
+        result.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].id") { value(created.id) }
+        }
+    }
+
+    @Test
+    fun `조회 기간이 잘못되면 400 INVALID_DATE_RANGE`() {
+        // when
+        val result = mockMvc.get("/api/v1/events") {
+            with(loginAs(owner))
+            param("from", "2026-11-18T00:00:00Z")
+            param("to", "2026-11-17T00:00:00Z")
+        }
+
+        // then
+        result.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_DATE_RANGE") }
+        }
+    }
+
+    // ===== 수정 / 삭제 =====
+
+    @Test
+    fun `일정을 수정하면 200과 수정된 일정을 반환한다`() {
+        // given
+        val created = createEvent()
+
+        // when
+        val result = mockMvc.patch("/api/v1/events/${created.id}") {
+            with(loginAs(owner))
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {"title": "제목 변경",
+                 "startAt": "2026-11-18T14:00:00+09:00", "endAt": "2026-11-18T16:00:00+09:00"}
+            """
+        }
+
+        // then
+        result.andExpect {
+            status { isOk() }
+            jsonPath("$.title") { value("제목 변경") }
+            jsonPath("$.endAt") { value("2026-11-18T07:00:00Z") }
+        }
+    }
+
+    @Test
+    fun `일정을 삭제하면 204를 반환하고 다시 조회하면 404`() {
+        // given
+        val created = createEvent()
+
+        // when
+        val result = mockMvc.delete("/api/v1/events/${created.id}") { with(loginAs(owner)) }
+
+        // then
+        result.andExpect { status { isNoContent() } }
+        mockMvc.get("/api/v1/events/${created.id}") { with(loginAs(owner)) }
+            .andExpect { status { isNotFound() } }
+    }
+
+    @Test
+    fun `VIEWER가 일정을 삭제하면 403 FORBIDDEN`() {
+        // given
+        val created = createEvent()
+
+        // when
+        val result = mockMvc.delete("/api/v1/events/${created.id}") { with(loginAs(viewer)) }
+
+        // then
+        result.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("FORBIDDEN") }
+        }
+    }
+}
