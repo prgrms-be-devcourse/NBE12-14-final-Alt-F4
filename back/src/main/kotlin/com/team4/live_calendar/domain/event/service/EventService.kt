@@ -11,6 +11,7 @@ import com.team4.live_calendar.domain.event.dto.EventCreateRequest
 import com.team4.live_calendar.domain.event.dto.EventResponse
 import com.team4.live_calendar.domain.event.dto.EventUpdateRequest
 import com.team4.live_calendar.domain.event.entity.Event
+import com.team4.live_calendar.domain.event.recurrence.ViewRange
 import com.team4.live_calendar.domain.event.repository.EventExceptionRepository
 import com.team4.live_calendar.domain.event.repository.EventOptionRepository
 import com.team4.live_calendar.domain.event.repository.EventRepository
@@ -71,25 +72,34 @@ class EventService(
     }
 
     // [from, to) 기간과 겹치는 일정. 내가 이용하는 캘린더만, 내가 숨긴 일정은 제외
+    // 종일 일정은 보는 사람 시간대(viewTimezone, 없으면 UTC)의 날짜로 비교한다
     // 반복 일정은 아직 회차로 펼치지 않는다
     fun findInRange(
         userId: Long,
         from: OffsetDateTime,
         to: OffsetDateTime,
         calendarIds: Collection<Long>? = null,
+        viewTimezone: String? = null,
     ): List<EventResponse> {
         val fromInstant = from.toInstant()
         val toInstant = to.toInstant()
         if (!fromInstant.isBefore(toInstant) || Duration.between(fromInstant, toInstant) > MAX_RANGE) {
             throw BusinessException(ErrorCode.INVALID_DATE_RANGE)
         }
+        val range = ViewRange(fromInstant, toInstant, ZoneId.of(validTimezone(viewTimezone)))
 
         val subscribes = subscribeRepository.findAllByUserId(userId)
             .filter { calendarIds == null || it.calendar.id in calendarIds }
         if (subscribes.isEmpty()) return emptyList()
 
         val hiddenEventIds = eventOptionRepository.findHiddenEventIds(subscribes.map { it.idOrThrow() }).toSet()
-        return eventRepository.findOverlapping(subscribes.map { it.calendar.idOrThrow() }, fromInstant, toInstant)
+        // 종일 일정은 보는 사람 시간대에 따라 하루까지 차이 나므로 DB에서는 앞뒤 하루씩 넉넉하게 가져와 거른다
+        return eventRepository.findOverlapping(
+            subscribes.map { it.calendar.idOrThrow() },
+            fromInstant.minus(DB_MARGIN),
+            toInstant.plus(DB_MARGIN),
+        )
+            .filter { range.overlaps(it.startAt, it.endAt, it.isAllDay) }
             .filter { it.id !in hiddenEventIds }
             .map(EventResponse::from)
     }
@@ -196,5 +206,6 @@ class EventService(
     companion object {
         private val EDITABLE_ROLES = setOf(CalendarRole.OWNER, CalendarRole.EDITOR)
         private val MAX_RANGE: Duration = Duration.ofDays(93)
+        private val DB_MARGIN: Duration = Duration.ofDays(1)
     }
 }

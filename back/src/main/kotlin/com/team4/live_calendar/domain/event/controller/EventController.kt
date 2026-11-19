@@ -35,13 +35,15 @@ class EventController(
     ): EventResponse = eventService.create(userId, request)
 
     // 기간 [from, to)와 겹치는 일정. 시간에 +가 들어가면 %2B로 인코딩하거나 UTC(Z)로 보낸다
+    // timezone: 보는 사람 시간대 (예: Asia/Seoul). 종일 일정을 이 시간대의 날짜로 비교하며, 없으면 UTC
     @GetMapping
     fun findInRange(
         @CurrentUserId userId: Long,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) from: OffsetDateTime,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) to: OffsetDateTime,
         @RequestParam(required = false) calendarIds: List<Long>?,
-    ): List<EventResponse> = eventService.findInRange(userId, from, to, calendarIds)
+        @RequestParam(required = false) timezone: String?,
+    ): List<EventResponse> = eventService.findInRange(userId, from, to, calendarIds, timezone)
 
     @GetMapping("/{id}")
     fun get(
