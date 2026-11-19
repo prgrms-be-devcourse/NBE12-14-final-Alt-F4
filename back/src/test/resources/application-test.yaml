@@ -26,3 +26,6 @@ app:
   cors:
     allowed-origins:
       - http://localhost:3000
+
+jwt:
+  secret: test-only-secret-key-not-for-production-0123456789

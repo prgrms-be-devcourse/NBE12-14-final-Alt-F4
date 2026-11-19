@@ -58,5 +58,54 @@ Content-Type: application/json
   "nickname": "test"
 }
 
-### GET은 허용되지 않음 (403)
+### GET은 허용되지 않음 (401)
 GET {{baseUrl}}/api/v1/auth/signup
+
+### 로그인 성공 (200) — 위의 첫 가입 요청을 먼저 실행
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@mail.com",
+  "password": "Passw0rd!"
+}
+
+> {%
+    client.global.set("accessToken", response.body.accessToken);
+%}
+
+### 로그인: 비밀번호가 틀림 (401 INVALID_CREDENTIALS)
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@mail.com",
+  "password": "Wrong1234!"
+}
+
+### 로그인: 가입하지 않은 이메일 (401 INVALID_CREDENTIALS, 위와 같은 응답)
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "none@mail.com",
+  "password": "Passw0rd!"
+}
+
+### 로그인: 이메일 형식 오류 (400 INVALID_INPUT)
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "not-an-email",
+  "password": "Passw0rd!"
+}
+
+### 로그인: 비밀번호가 비어 있음 (400 INVALID_INPUT)
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@mail.com",
+  "password": ""
+}

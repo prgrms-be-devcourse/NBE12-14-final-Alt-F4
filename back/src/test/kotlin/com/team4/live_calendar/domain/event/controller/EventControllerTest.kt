@@ -164,8 +164,8 @@ class EventControllerTest(
             content = timedEventJson()
         }
 
-        // then: 아직 인증 실패 처리기가 없어서 Security가 403으로 막는다 (로그인 구현 후 401로 바뀔 수 있음)
-        result.andExpect { status { isForbidden() } }
+        // then
+        result.andExpect { status { isUnauthorized() } }
     }
 
     // ===== 조회 =====
