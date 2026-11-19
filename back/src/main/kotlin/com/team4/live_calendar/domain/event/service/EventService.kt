@@ -11,6 +11,8 @@ import com.team4.live_calendar.domain.event.dto.EventCreateRequest
 import com.team4.live_calendar.domain.event.dto.EventResponse
 import com.team4.live_calendar.domain.event.dto.EventUpdateRequest
 import com.team4.live_calendar.domain.event.entity.Event
+import com.team4.live_calendar.domain.event.recurrence.RecurrenceExpander
+import com.team4.live_calendar.domain.event.recurrence.RecurrenceRule
 import com.team4.live_calendar.domain.event.recurrence.ViewRange
 import com.team4.live_calendar.domain.event.repository.EventExceptionRepository
 import com.team4.live_calendar.domain.event.repository.EventOptionRepository
@@ -50,6 +52,8 @@ class EventService(
         checkEditable(userId, calendar)
 
         val (startAt, endAt) = toPeriod(request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate)
+        val timezone = givenTimezone(request.timezone)
+        val recurrence = resolveRecurrence(request.rrule, request.isAllDay, startAt, endAt, timezone)
         val event = Event.create(
             calendar = calendar,
             category = findCategoryIn(calendar, request.categoryId),
@@ -60,8 +64,8 @@ class EventService(
             startAt = startAt,
             endAt = endAt,
             isAllDay = request.isAllDay,
-            timezone = validTimezone(request.timezone),
         )
+        event.changeRecurrence(timezone ?: Event.DEFAULT_TIMEZONE, recurrence?.rrule, recurrence?.recurUntil)
         return EventResponse.from(eventRepository.saveAndFlush(event))
     }
 
@@ -73,7 +77,7 @@ class EventService(
 
     // [from, to) 기간과 겹치는 일정. 내가 이용하는 캘린더만, 내가 숨긴 일정은 제외
     // 종일 일정은 보는 사람 시간대(viewTimezone, 없으면 UTC)의 날짜로 비교한다
-    // 반복 일정은 아직 회차로 펼치지 않는다
+    // 반복 일정은 기간 안의 회차마다 하나씩 (같은 id, 회차의 시간)
     fun findInRange(
         userId: Long,
         from: OffsetDateTime,
@@ -93,15 +97,21 @@ class EventService(
         if (subscribes.isEmpty()) return emptyList()
 
         val hiddenEventIds = eventOptionRepository.findHiddenEventIds(subscribes.map { it.idOrThrow() }).toSet()
+        val subscribedCalendarIds = subscribes.map { it.calendar.idOrThrow() }
         // 종일 일정은 보는 사람 시간대에 따라 하루까지 차이 나므로 DB에서는 앞뒤 하루씩 넉넉하게 가져와 거른다
-        return eventRepository.findOverlapping(
-            subscribes.map { it.calendar.idOrThrow() },
-            fromInstant.minus(DB_MARGIN),
-            toInstant.plus(DB_MARGIN),
-        )
-            .filter { range.overlaps(it.startAt, it.endAt, it.isAllDay) }
+        val dbFrom = fromInstant.minus(DB_MARGIN)
+        val dbTo = toInstant.plus(DB_MARGIN)
+
+        val singles = eventRepository.findSingleOverlapping(subscribedCalendarIds, dbFrom, dbTo)
             .filter { it.id !in hiddenEventIds }
+            .filter { range.overlaps(it.startAt, it.endAt, it.isAllDay) }
             .map(EventResponse::from)
+        val occurrences = eventRepository.findRecurringCandidates(subscribedCalendarIds, dbFrom, dbTo)
+            .filter { it.id !in hiddenEventIds }
+            .flatMap { event ->
+                RecurrenceExpander.expand(event, range).map { EventResponse.from(event, it.startAt, it.endAt) }
+            }
+        return (singles + occurrences).sortedWith(compareBy({ it.startAt }, { it.id }))
     }
 
     @Transactional
@@ -110,6 +120,8 @@ class EventService(
         checkEditable(userId, event.calendar)
 
         val (startAt, endAt) = toPeriod(request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate)
+        val timezone = givenTimezone(request.timezone)
+        val recurrence = resolveRecurrence(request.rrule, request.isAllDay, startAt, endAt, timezone)
         event.update(
             title = request.title,
             description = request.description,
@@ -119,6 +131,8 @@ class EventService(
             isAllDay = request.isAllDay,
             category = findCategoryIn(event.calendar, request.categoryId),
         )
+        // 시간대를 보내지 않으면 기존 값 유지, 반복 규칙을 보내지 않으면 반복 해제
+        event.changeRecurrence(timezone ?: event.timezone, recurrence?.rrule, recurrence?.recurUntil)
         return EventResponse.from(eventRepository.saveAndFlush(event))
     }
 
@@ -189,6 +203,20 @@ class EventService(
         }
         return period
     }
+
+    // 요청에 시간대가 있으면 검증한 이름, 없으면 null
+    private fun givenTimezone(timezone: String?): String? =
+        if (timezone.isNullOrBlank()) null else validTimezone(timezone)
+
+    // 반복 규칙이 없으면 null (반복 없는 일정)
+    private fun resolveRecurrence(
+        rrule: String?,
+        isAllDay: Boolean,
+        startAt: Instant,
+        endAt: Instant,
+        timezone: String?,
+    ): RecurrenceRule.Result? =
+        if (rrule.isNullOrBlank()) null else RecurrenceRule.resolve(rrule, isAllDay, startAt, endAt, timezone)
 
     private fun validTimezone(timezone: String?): String {
         if (timezone.isNullOrBlank()) return Event.DEFAULT_TIMEZONE
