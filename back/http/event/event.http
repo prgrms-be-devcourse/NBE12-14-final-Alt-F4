@@ -1,0 +1,80 @@
+# 일정 API 요청 예시
+# ※ 로그인 API가 아직 없어서 지금은 실제로 호출하면 403이 납니다. 로그인 구현 후 인증 헤더를 추가해야 합니다.
+# ※ 쿼리 파라미터의 시간에 +가 들어가면 공백으로 바뀌므로 UTC(Z)로 보내거나 %2B로 인코딩하세요.
+
+### 시간 일정 생성 (201)
+POST {{baseUrl}}/api/v1/events
+Content-Type: application/json
+
+{
+  "calendarId": 1,
+  "categoryId": null,
+  "title": "팀 회의",
+  "description": "주간 회의",
+  "location": "회의실",
+  "startAt": "2026-11-18T14:00:00+09:00",
+  "endAt": "2026-11-18T15:00:00+09:00",
+  "timezone": "Asia/Seoul"
+}
+
+### 종일 일정 생성 (201) - endDate는 마지막 날 포함
+POST {{baseUrl}}/api/v1/events
+Content-Type: application/json
+
+{
+  "calendarId": 1,
+  "title": "워크숍",
+  "isAllDay": true,
+  "startDate": "2026-11-18",
+  "endDate": "2026-11-19"
+}
+
+### 제목이 비어 있음 (400 INVALID_INPUT)
+POST {{baseUrl}}/api/v1/events
+Content-Type: application/json
+
+{
+  "calendarId": 1,
+  "title": " ",
+  "startAt": "2026-11-18T14:00:00+09:00",
+  "endAt": "2026-11-18T15:00:00+09:00"
+}
+
+### 종료가 시작보다 빠름 (400 INVALID_EVENT_TIME)
+POST {{baseUrl}}/api/v1/events
+Content-Type: application/json
+
+{
+  "calendarId": 1,
+  "title": "팀 회의",
+  "startAt": "2026-11-18T15:00:00+09:00",
+  "endAt": "2026-11-18T14:00:00+09:00"
+}
+
+### 기간 조회 (200) - 한국 시간 11월 18일 하루
+GET {{baseUrl}}/api/v1/events?from=2026-11-17T15:00:00Z&to=2026-11-18T15:00:00Z
+
+### 기간 조회, 특정 캘린더만 (200)
+GET {{baseUrl}}/api/v1/events?from=2026-11-17T15:00:00Z&to=2026-11-18T15:00:00Z&calendarIds=1,2
+
+### 상세 조회 (200)
+GET {{baseUrl}}/api/v1/events/1
+
+### 없는 일정 (404 EVENT_NOT_FOUND)
+GET {{baseUrl}}/api/v1/events/999999
+
+### 수정 (200) - 모든 필드를 다시 보냄
+PATCH {{baseUrl}}/api/v1/events/1
+Content-Type: application/json
+
+{
+  "categoryId": null,
+  "title": "팀 회의 (시간 변경)",
+  "description": null,
+  "location": null,
+  "startAt": "2026-11-18T14:00:00+09:00",
+  "endAt": "2026-11-18T16:00:00+09:00"
+}
+
+### 삭제 (204)
+DELETE {{baseUrl}}/api/v1/events/1
