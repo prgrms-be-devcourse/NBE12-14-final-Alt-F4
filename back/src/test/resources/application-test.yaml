@@ -21,3 +21,8 @@ spring:
     database:
       # @DataJpaTest가 DataSource를 내장 DB로 바꾸지 않고 위 MySQL을 그대로 쓰게 한다
       replace: none
+
+app:
+  cors:
+    allowed-origins:
+      - http://localhost:3000
