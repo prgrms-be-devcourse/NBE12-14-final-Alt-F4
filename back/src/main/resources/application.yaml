@@ -28,3 +28,9 @@ management:
   metrics:
     tags:
       application: live-calendar
+
+jwt:
+  secret: ${JWT_SECRET}
+  issuer: live-calendar
+  access-token-expiry: 30m
+  refresh-token-expiry: 14d
