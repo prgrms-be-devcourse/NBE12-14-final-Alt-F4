@@ -7,6 +7,7 @@ import com.team4.live_calendar.domain.calendar.entity.Subscribe
 import com.team4.live_calendar.domain.event.dto.EventCreateRequest
 import com.team4.live_calendar.domain.event.dto.EventResponse
 import com.team4.live_calendar.domain.event.dto.EventUpdateRequest
+import com.team4.live_calendar.domain.event.dto.RecurrenceScope
 import com.team4.live_calendar.domain.event.entity.EventOption
 import com.team4.live_calendar.domain.event.repository.EventRepository
 import com.team4.live_calendar.domain.user.entity.User
@@ -162,6 +163,7 @@ class EventRecurrenceServiceTest(
         eventService.update(
             owner.id!!, created.id,
             timedUpdate("FREQ=WEEKLY;COUNT=3", "Asia/Seoul", mondayStart.plusHours(1), mondayEnd.plusHours(1)),
+            RecurrenceScope.ALL,
         )
 
         // then
@@ -177,6 +179,7 @@ class EventRecurrenceServiceTest(
         val response = eventService.update(
             owner.id!!, created.id,
             timedUpdate("FREQ=WEEKLY;BYDAY=TU", "Asia/Seoul", mondayStart.plusDays(1), mondayEnd.plusDays(1)),
+            RecurrenceScope.ALL,
         )
 
         // then
@@ -190,7 +193,7 @@ class EventRecurrenceServiceTest(
 
         // then
         assertErrorCode(ErrorCode.INVALID_RECURRENCE) {
-            eventService.update(owner.id!!, created.id, timedUpdate("FREQ=WEEKLY;BYDAY=TU", "Asia/Seoul"))
+            eventService.update(owner.id!!, created.id, timedUpdate("FREQ=WEEKLY;BYDAY=TU", "Asia/Seoul"), RecurrenceScope.ALL)
         }
     }
 
@@ -200,7 +203,7 @@ class EventRecurrenceServiceTest(
         val created = eventService.create(owner.id!!, timedRequest("FREQ=WEEKLY;COUNT=3"))
 
         // when
-        val response = eventService.update(owner.id!!, created.id, timedUpdate(rrule = null))
+        val response = eventService.update(owner.id!!, created.id, timedUpdate(rrule = null), RecurrenceScope.ALL)
 
         // then
         assertNull(response.rrule)
@@ -214,7 +217,7 @@ class EventRecurrenceServiceTest(
         val created = eventService.create(owner.id!!, timedRequest("FREQ=WEEKLY;BYDAY=MO;COUNT=3"))
 
         // when: timezone 없이 4번으로 수정
-        val response = eventService.update(owner.id!!, created.id, timedUpdate("FREQ=WEEKLY;BYDAY=MO;COUNT=4"))
+        val response = eventService.update(owner.id!!, created.id, timedUpdate("FREQ=WEEKLY;BYDAY=MO;COUNT=4"), RecurrenceScope.ALL)
 
         // then: Asia/Seoul 기준 월요일로 계산 (12/7 08:00~09:00 회차의 끝)
         assertEquals("Asia/Seoul", response.timezone)
@@ -240,7 +243,7 @@ class EventRecurrenceServiceTest(
 
         // then
         assertErrorCode(ErrorCode.INVALID_RECURRENCE) {
-            eventService.update(owner.id!!, created.id, timedUpdate("FREQ=WEEKLY"))
+            eventService.update(owner.id!!, created.id, timedUpdate("FREQ=WEEKLY"), RecurrenceScope.ALL)
         }
     }
 
@@ -250,7 +253,7 @@ class EventRecurrenceServiceTest(
         val created = eventService.create(owner.id!!, timedRequest("FREQ=WEEKLY"))
 
         // when
-        val response = eventService.update(owner.id!!, created.id, timedUpdate("FREQ=WEEKLY", "America/New_York"))
+        val response = eventService.update(owner.id!!, created.id, timedUpdate("FREQ=WEEKLY", "America/New_York"), RecurrenceScope.ALL)
 
         // then
         assertEquals("America/New_York", response.timezone)
@@ -263,7 +266,7 @@ class EventRecurrenceServiceTest(
 
         // then
         assertErrorCode(ErrorCode.INVALID_RECURRENCE) {
-            eventService.update(owner.id!!, created.id, timedUpdate("FREQ=WEEKLY;UNTIL=20261130", "Asia/Seoul"))
+            eventService.update(owner.id!!, created.id, timedUpdate("FREQ=WEEKLY;UNTIL=20261130", "Asia/Seoul"), RecurrenceScope.ALL)
         }
     }
 

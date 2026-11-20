@@ -334,6 +334,7 @@ class EventControllerTest(
         // when: 뉴욕 시간 화요일 10시 매주
         val result = mockMvc.patch("/api/v1/events/$id") {
             with(loginAs(owner))
+            param("scope", "ALL")
             contentType = MediaType.APPLICATION_JSON
             content = """
                 {"title": "주간 회의",

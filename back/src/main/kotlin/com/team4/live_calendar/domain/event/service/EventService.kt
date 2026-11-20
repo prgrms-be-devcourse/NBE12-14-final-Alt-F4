@@ -10,7 +10,10 @@ import com.team4.live_calendar.domain.category.repository.EventCategoryRepositor
 import com.team4.live_calendar.domain.event.dto.EventCreateRequest
 import com.team4.live_calendar.domain.event.dto.EventResponse
 import com.team4.live_calendar.domain.event.dto.EventUpdateRequest
+import com.team4.live_calendar.domain.event.dto.RecurrenceScope
 import com.team4.live_calendar.domain.event.entity.Event
+import com.team4.live_calendar.domain.event.entity.EventException
+import com.team4.live_calendar.domain.event.entity.EventExceptionType
 import com.team4.live_calendar.domain.event.recurrence.RecurrenceExpander
 import com.team4.live_calendar.domain.event.recurrence.RecurrenceRule
 import com.team4.live_calendar.domain.event.recurrence.ViewRange
@@ -135,11 +138,24 @@ class EventService(
         return (singles + occurrences + modified).sortedWith(compareBy({ it.startAt }, { it.id }))
     }
 
+    // 반복 일정은 scope가 필요하다. THIS면 그 회차만, ALL이면 반복 전체를 수정한다
     @Transactional
-    fun update(userId: Long, eventId: Long, request: EventUpdateRequest): EventResponse {
+    fun update(
+        userId: Long,
+        eventId: Long,
+        request: EventUpdateRequest,
+        scope: RecurrenceScope? = null,
+        occurrenceStart: OffsetDateTime? = null,
+    ): EventResponse {
         val event = findEvent(eventId)
         checkEditable(userId, event.calendar)
+        val wasRecurring = event.rrule != null
+        if (wasRecurring && requireScope(scope) == RecurrenceScope.THIS) {
+            return updateOccurrence(event, request, occurrenceStart)
+        }
 
+        // 전체 수정에서 회차 일정(시간·규칙·종일·시간대)이 바뀌면 기존 예외는 원래 회차와 맞지 않아 지운다
+        val scheduleBefore = event.schedule()
         val (startAt, endAt) = toPeriod(request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate)
         // 시간대를 보내지 않으면 기존 값 유지. 단, 반복 시간 일정이 아니었다면 기존 값이 기본값(UTC)일 수 있어
         // 반복 계산에는 쓰지 않는다 (시간 일정을 처음 반복으로 바꿀 때는 timezone 필요)
@@ -157,13 +173,21 @@ class EventService(
         )
         // 반복 규칙을 보내지 않으면 반복 해제
         event.changeRecurrence(timezone ?: event.timezone, recurrence?.rrule, recurrence?.recurUntil)
+        if (wasRecurring && event.schedule() != scheduleBefore) {
+            eventExceptionRepository.deleteAllByEventId(eventId)
+        }
         return EventResponse.from(eventRepository.saveAndFlush(event))
     }
 
+    // 반복 일정은 scope가 필요하다. THIS면 그 회차만, ALL이면 지난 회차까지 모두 삭제한다
     @Transactional
-    fun delete(userId: Long, eventId: Long) {
+    fun delete(userId: Long, eventId: Long, scope: RecurrenceScope? = null, occurrenceStart: OffsetDateTime? = null) {
         val event = findEvent(eventId)
         checkEditable(userId, event.calendar)
+        if (event.rrule != null && requireScope(scope) == RecurrenceScope.THIS) {
+            deleteOccurrence(event, occurrenceStart)
+            return
+        }
 
         // 일정을 참조하는 데이터를 먼저 지운다 (FK)
         eventOptionRepository.deleteAllByEventId(eventId)
@@ -171,6 +195,65 @@ class EventService(
         roomSharedEventRepository.deleteAllByEventId(eventId)
         eventRepository.delete(event)
     }
+
+    // 이 회차만 수정: 제목·설명·장소·시간만 바꿀 수 있다 (event_exceptions에 종일 여부·카테고리 칸이 없음)
+    private fun updateOccurrence(event: Event, request: EventUpdateRequest, occurrenceStart: OffsetDateTime?): EventResponse {
+        val (recurrenceId, exception) = findOccurrence(event, occurrenceStart)
+        if (request.isAllDay != event.isAllDay) {
+            throw BusinessException(ErrorCode.INVALID_INPUT, "이 일정만 수정할 때는 종일 여부를 바꿀 수 없습니다.")
+        }
+        if (request.categoryId != event.category?.id) {
+            throw BusinessException(ErrorCode.INVALID_INPUT, "이 일정만 수정할 때는 카테고리를 바꿀 수 없습니다.")
+        }
+        val (startAt, endAt) = toPeriod(request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate)
+
+        // 같은 회차를 다시 고치면 새 줄을 만들지 않고 기존 예외를 고친다
+        val modified = exception?.apply { modify(request.title, request.description, request.location, startAt, endAt) }
+            ?: eventExceptionRepository.save(
+                EventException.create(
+                    event = event,
+                    recurrenceId = recurrenceId,
+                    type = EventExceptionType.MODIFIED,
+                    title = request.title,
+                    description = request.description,
+                    location = request.location,
+                    startAt = startAt,
+                    endAt = endAt,
+                ),
+            )
+        // 바로 반영해서 응답의 updatedAt이 이번 수정 시각이 되게 한다
+        return EventResponse.from(event, eventExceptionRepository.saveAndFlush(modified))
+    }
+
+    // 이 회차만 삭제: 수정했던 회차면 DELETED로 바꾼다
+    private fun deleteOccurrence(event: Event, occurrenceStart: OffsetDateTime?) {
+        val (recurrenceId, exception) = findOccurrence(event, occurrenceStart)
+        if (exception != null) {
+            exception.markDeleted()
+        } else {
+            eventExceptionRepository.save(EventException.create(event, recurrenceId, EventExceptionType.DELETED))
+        }
+    }
+
+    // 이 일정만 수정·삭제할 회차와 그 회차의 예외. 실제 회차가 아니거나 이미 지운 회차면 404
+    private fun findOccurrence(event: Event, occurrenceStart: OffsetDateTime?): Pair<Instant, EventException?> {
+        val recurrenceId = occurrenceStart?.toInstant()
+            ?: throw BusinessException(ErrorCode.INVALID_INPUT, "이 일정만 수정·삭제하려면 occurrenceStart가 필요합니다.")
+        if (!RecurrenceExpander.isOccurrence(event, recurrenceId)) {
+            throw BusinessException(ErrorCode.OCCURRENCE_NOT_FOUND)
+        }
+        val exception = eventExceptionRepository.findFirstByEventIdAndRecurrenceIdOrderByIdAsc(requireNotNull(event.id), recurrenceId)
+        if (exception?.type == EventExceptionType.DELETED) {
+            throw BusinessException(ErrorCode.OCCURRENCE_NOT_FOUND)
+        }
+        return recurrenceId to exception
+    }
+
+    private fun requireScope(scope: RecurrenceScope?): RecurrenceScope =
+        scope ?: throw BusinessException(ErrorCode.RECURRENCE_SCOPE_REQUIRED)
+
+    // 회차가 생기는 방식. 전체 수정에서 이 값이 바뀌면 기존 예외를 지운다
+    private fun Event.schedule(): List<Any?> = listOf(startAt, endAt, isAllDay, timezone, rrule)
 
     private fun findEvent(eventId: Long): Event =
         eventRepository.findByIdOrNull(eventId) ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
