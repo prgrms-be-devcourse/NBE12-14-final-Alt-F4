@@ -129,8 +129,37 @@ Content-Type: application/json
   "rrule": "FREQ=DAILY;BYHOUR=9,18"
 }
 
-### 반복 일정 수정 (200) - 월·수 → 화·목으로 옮김. 시작일도 첫 회차(화요일)로 같이 옮겨야 합니다
-PATCH {{baseUrl}}/api/v1/events/1
+### 반복 일정의 이 일정만 수정 (200) - 11/30(월) 회차만 오후 2시로 옮기고 제목 변경 (격주 월·수라 11/16, 11/18, 11/30, 12/2 …가 회차)
+# occurrenceStart에는 기간 조회 응답의 occurrenceStart(원래 회차 시작)를 그대로 보냅니다. +는 %2B로 인코딩
+# 이 일정만 수정에서는 제목·설명·장소·시간만 바뀝니다. 종일 여부·카테고리는 반복 일정과 같아야 하고 rrule, timezone은 무시합니다
+# "이 일정과 이후"(THIS_AND_FOLLOWING)는 아직 지원하지 않아 400이 납니다. 화면에서는 그 선택지를 숨겨 주세요
+PATCH {{baseUrl}}/api/v1/events/1?scope=THIS&occurrenceStart=2026-11-30T10:00:00%2B09:00
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "categoryId": null,
+  "title": "스터디 (시간 변경)",
+  "description": null,
+  "location": null,
+  "startAt": "2026-11-30T14:00:00+09:00",
+  "endAt": "2026-11-30T15:00:00+09:00",
+  "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;UNTIL=20261231T145959Z"
+}
+
+### 반복 일정의 이 일정만 삭제 (204) - 11/18(수) 회차만 삭제 (한국 10시 = UTC 01시)
+DELETE {{baseUrl}}/api/v1/events/1?scope=THIS&occurrenceStart=2026-11-18T01:00:00Z
+Authorization: Bearer {{accessToken}}
+
+### 반복 일정을 scope 없이 삭제 (400 RECURRENCE_SCOPE_REQUIRED)
+DELETE {{baseUrl}}/api/v1/events/1
+Authorization: Bearer {{accessToken}}
+
+### 반복 일정 전체 수정 (200) - 월·수 → 화·목으로 옮김. 시작일도 첫 회차(화요일)로 같이 옮겨야 합니다
+# 반복 일정은 scope가 필요합니다 (없으면 400 RECURRENCE_SCOPE_REQUIRED)
+# scope=ALL의 본문은 클릭한 회차가 아니라 반복 일정 자체의 값(첫 회차 기준, GET /events/{id} 응답)입니다.
+# 회차의 시간을 보내면 반복의 시작이 그 회차로 옮겨지고, 이 일정만 수정·삭제한 회차도 원래대로 돌아갑니다
+PATCH {{baseUrl}}/api/v1/events/1?scope=ALL
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
@@ -150,6 +179,6 @@ Content-Type: application/json
 GET {{baseUrl}}/api/v1/events?from=2026-10-31T15:00:00Z&to=2026-11-30T15:00:00Z&timezone=Asia/Seoul
 Authorization: Bearer {{accessToken}}
 
-### 삭제 (204)
-DELETE {{baseUrl}}/api/v1/events/1
+### 삭제 (204) - 반복 일정은 scope=ALL이면 지난 회차까지 모두 삭제. 반복 없는 일정은 scope를 무시합니다
+DELETE {{baseUrl}}/api/v1/events/1?scope=ALL
 Authorization: Bearer {{accessToken}}
