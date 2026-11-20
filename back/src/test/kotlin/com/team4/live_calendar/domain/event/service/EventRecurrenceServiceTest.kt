@@ -209,9 +209,34 @@ class EventRecurrenceServiceTest(
     }
 
     @Test
+    fun `반복 시간 일정은 시간대 없이 수정해도 기존 시간대로 반복된다`() {
+        // given: 한국 월요일 오전 8시 (UTC로는 일요일), 매주 월요일 3번
+        val created = eventService.create(owner.id!!, timedRequest("FREQ=WEEKLY;BYDAY=MO;COUNT=3"))
+
+        // when: timezone 없이 4번으로 수정
+        val response = eventService.update(owner.id!!, created.id, timedUpdate("FREQ=WEEKLY;BYDAY=MO;COUNT=4"))
+
+        // then: Asia/Seoul 기준 월요일로 계산 (12/7 08:00~09:00 회차의 끝)
+        assertEquals("Asia/Seoul", response.timezone)
+        assertEquals("FREQ=WEEKLY;COUNT=4;BYDAY=MO", response.rrule)
+        assertEquals(Instant.parse("2026-12-07T00:00:00Z"), recurUntilOf(created))
+    }
+
+    @Test
     fun `시간대 없이 만든 일반 일정을 시간 반복으로 바꿀 때 시간대가 없으면 400 INVALID_RECURRENCE`() {
         // given
         val created = eventService.create(owner.id!!, timedRequest(rrule = null, timezone = null))
+
+        // then
+        assertErrorCode(ErrorCode.INVALID_RECURRENCE) {
+            eventService.update(owner.id!!, created.id, timedUpdate("FREQ=WEEKLY"))
+        }
+    }
+
+    @Test
+    fun `종일 반복 일정을 시간 반복으로 바꿀 때 시간대가 없으면 400 INVALID_RECURRENCE`() {
+        // given: 종일 반복은 시간대 없이 만들 수 있어 기본값 UTC가 저장된다
+        val created = eventService.create(owner.id!!, allDayRequest("2026-11-16", "FREQ=WEEKLY"))
 
         // then
         assertErrorCode(ErrorCode.INVALID_RECURRENCE) {

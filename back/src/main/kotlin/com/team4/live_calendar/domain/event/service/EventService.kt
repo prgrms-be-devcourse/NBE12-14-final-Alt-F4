@@ -120,7 +120,10 @@ class EventService(
         checkEditable(userId, event.calendar)
 
         val (startAt, endAt) = toPeriod(request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate)
+        // 시간대를 보내지 않으면 기존 값 유지. 단, 반복 시간 일정이 아니었다면 기존 값이 기본값(UTC)일 수 있어
+        // 반복 계산에는 쓰지 않는다 (시간 일정을 처음 반복으로 바꿀 때는 timezone 필요)
         val timezone = givenTimezone(request.timezone)
+            ?: event.timezone.takeIf { event.rrule != null && !event.isAllDay }
         val recurrence = resolveRecurrence(request.rrule, request.isAllDay, startAt, endAt, timezone)
         event.update(
             title = request.title,
@@ -131,7 +134,7 @@ class EventService(
             isAllDay = request.isAllDay,
             category = findCategoryIn(event.calendar, request.categoryId),
         )
-        // 시간대를 보내지 않으면 기존 값 유지, 반복 규칙을 보내지 않으면 반복 해제
+        // 반복 규칙을 보내지 않으면 반복 해제
         event.changeRecurrence(timezone ?: event.timezone, recurrence?.rrule, recurrence?.recurUntil)
         return EventResponse.from(eventRepository.saveAndFlush(event))
     }

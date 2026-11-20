@@ -30,7 +30,7 @@ class EventUpdateRequest(
 
     val endDate: LocalDate? = null,
 
-    // 없으면 기존 시간대 유지. 단, 반복 시간 일정은 수정할 때마다 꼭 보내야 한다 (없으면 400 INVALID_RECURRENCE)
+    // 없으면 기존 시간대 유지. 단, 일반·종일 일정을 처음 시간 반복으로 바꿀 때는 꼭 보내야 한다 (없으면 400 INVALID_RECURRENCE)
     @field:Size(max = 100)
     val timezone: String? = null,
 
