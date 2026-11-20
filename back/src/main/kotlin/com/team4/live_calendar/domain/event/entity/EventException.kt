@@ -84,6 +84,26 @@ class EventException protected constructor(
     lateinit var updatedAt: Instant
         protected set
 
+    // 이 회차만 수정: 바뀐 내용 전체로 덮어쓴다
+    fun modify(title: String, description: String?, location: String?, startAt: Instant, endAt: Instant) {
+        this.type = EventExceptionType.MODIFIED
+        this.title = title.trim()
+        this.description = description
+        this.location = location
+        this.startAt = startAt
+        this.endAt = endAt
+    }
+
+    // 이 회차만 삭제: 바뀐 내용은 비운다
+    fun markDeleted() {
+        this.type = EventExceptionType.DELETED
+        this.title = null
+        this.description = null
+        this.location = null
+        this.startAt = null
+        this.endAt = null
+    }
+
     companion object {
         fun create(
             event: Event,

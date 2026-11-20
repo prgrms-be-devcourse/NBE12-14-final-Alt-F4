@@ -41,4 +41,10 @@ object RecurrenceExpander {
             .map { Occurrence(it, it.plus(length)) }
             .filter { range.overlaps(it.startAt, it.endAt, event.isAllDay) }
     }
+
+    // occurrenceStart가 이 반복의 실제 회차 시작인지 (기간 조회의 펼치기와 같은 결과)
+    // 길이 0인 일정도 걸러지지 않게 앞뒤 1초 범위로 펼치고, 종일 일정 날짜가 밀리지 않게 시간대는 UTC로 고정한다
+    fun isOccurrence(event: Event, occurrenceStart: Instant): Boolean =
+        expand(event, ViewRange(occurrenceStart.minusSeconds(1), occurrenceStart.plusSeconds(1), ZoneOffset.UTC))
+            .any { it.startAt == occurrenceStart }
 }

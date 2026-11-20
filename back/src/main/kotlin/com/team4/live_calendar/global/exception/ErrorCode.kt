@@ -24,4 +24,6 @@ enum class ErrorCode(
     INVALID_EVENT_TIME(HttpStatus.BAD_REQUEST, "종료 일시는 시작 일시보다 빠를 수 없습니다."),
     INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "조회 기간이 올바르지 않습니다."),
     INVALID_RECURRENCE(HttpStatus.BAD_REQUEST, "반복 규칙이 올바르지 않습니다."),
+    RECURRENCE_SCOPE_REQUIRED(HttpStatus.BAD_REQUEST, "반복 일정은 수정·삭제 범위(scope)를 지정해야 합니다."),
+    OCCURRENCE_NOT_FOUND(HttpStatus.NOT_FOUND, "반복 일정의 해당 회차를 찾을 수 없습니다."),
 }
