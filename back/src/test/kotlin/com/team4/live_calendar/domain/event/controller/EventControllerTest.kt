@@ -380,6 +380,74 @@ class EventControllerTest(
     }
 
     @Test
+    fun `반복 일정의 이 일정만 수정하면 바뀐 회차를 반환한다`() {
+        // given: 매주 월요일 한국 08:00
+        val id = createRecurringEvent()
+
+        // when: 11/23 회차만 10시로 (+09:00은 param으로 넣으면 그대로 전달된다)
+        val result = mockMvc.patch("/api/v1/events/$id") {
+            with(loginAs(owner))
+            param("scope", "THIS")
+            param("occurrenceStart", "2026-11-23T08:00:00+09:00")
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {"title": "변경된 회의",
+                 "startAt": "2026-11-23T10:00:00+09:00", "endAt": "2026-11-23T11:00:00+09:00",
+                 "rrule": "FREQ=WEEKLY;BYDAY=MO"}
+            """
+        }
+
+        // then
+        result.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(id) }
+            jsonPath("$.title") { value("변경된 회의") }
+            jsonPath("$.startAt") { value("2026-11-23T01:00:00Z") }
+            jsonPath("$.occurrenceStart") { value("2026-11-22T23:00:00Z") }
+        }
+    }
+
+    @Test
+    fun `반복 일정의 이 일정만 삭제하면 204이고 그 회차만 조회에서 빠진다`() {
+        // given
+        val id = createRecurringEvent()
+
+        // when
+        val result = mockMvc.delete("/api/v1/events/$id") {
+            with(loginAs(owner))
+            param("scope", "THIS")
+            param("occurrenceStart", "2026-11-22T23:00:00Z")
+        }
+
+        // then
+        result.andExpect { status { isNoContent() } }
+        mockMvc.get("/api/v1/events") {
+            with(loginAs(owner))
+            param("from", "2026-11-16T00:00:00+09:00")
+            param("to", "2026-12-01T00:00:00+09:00")
+            param("timezone", "Asia/Seoul")
+        }.andExpect {
+            jsonPath("$.length()") { value(2) }
+            jsonPath("$[1].occurrenceStart") { value("2026-11-29T23:00:00Z") }
+        }
+    }
+
+    @Test
+    fun `반복 일정을 scope 없이 삭제하면 400 RECURRENCE_SCOPE_REQUIRED`() {
+        // given
+        val id = createRecurringEvent()
+
+        // when
+        val result = mockMvc.delete("/api/v1/events/$id") { with(loginAs(owner)) }
+
+        // then
+        result.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("RECURRENCE_SCOPE_REQUIRED") }
+        }
+    }
+
+    @Test
     fun `기간 조회의 timezone이 잘못되면 400 INVALID_INPUT`() {
         // when
         val result = mockMvc.get("/api/v1/events") {
