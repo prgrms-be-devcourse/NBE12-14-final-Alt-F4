@@ -77,7 +77,7 @@ class EventService(
 
     // [from, to) 기간과 겹치는 일정. 내가 이용하는 캘린더만, 내가 숨긴 일정은 제외
     // 종일 일정은 보는 사람 시간대(viewTimezone, 없으면 UTC)의 날짜로 비교한다
-    // 반복 일정은 기간 안의 회차마다 하나씩 (같은 id, 회차의 시간)
+    // 반복 일정은 기간 안의 회차마다 하나씩 (같은 id, 회차의 시간). 지운 회차는 빼고, 바뀐 회차는 바뀐 내용으로
     fun findInRange(
         userId: Long,
         from: OffsetDateTime,
@@ -106,12 +106,33 @@ class EventService(
             .filter { it.id !in hiddenEventIds }
             .filter { range.overlaps(it.startAt, it.endAt, it.isAllDay) }
             .map(EventResponse::from)
-        val occurrences = eventRepository.findRecurringCandidates(subscribedCalendarIds, dbFrom, dbTo)
+        val expanded = eventRepository.findRecurringCandidates(subscribedCalendarIds, dbFrom, dbTo)
             .filter { it.id !in hiddenEventIds }
-            .flatMap { event ->
-                RecurrenceExpander.expand(event, range).map { EventResponse.from(event, it.startAt, it.endAt) }
-            }
-        return (singles + occurrences).sortedWith(compareBy({ it.startAt }, { it.id }))
+            .map { it to RecurrenceExpander.expand(it, range) }
+        // 예외(지움·바뀜)가 있는 회차는 펼친 결과에서 뺀다. 바뀐 회차는 아래에서 바뀐 시간으로 다시 넣는다
+        // 예외는 펼친 회차 시작 범위 안의 것만 가져온다 (오래된 반복 일정의 지난 예외까지 읽지 않도록)
+        val starts = expanded.flatMap { (_, occurrences) -> occurrences.map { it.startAt } }
+        val exceptionKeys = if (starts.isEmpty()) {
+            emptySet()
+        } else {
+            eventExceptionRepository.findAllInRecurrenceRange(expanded.map { requireNotNull(it.first.id) }, starts.min(), starts.max())
+                .map { it.event.id to it.recurrenceId }
+                .toSet()
+        }
+        val occurrences = expanded.flatMap { (event, occurrences) ->
+            occurrences
+                .filter { (event.id to it.startAt) !in exceptionKeys }
+                .map { EventResponse.from(event, it.startAt, it.endAt) }
+        }
+        // 다른 날로 옮긴 회차, 반복이 끝난 뒤로 옮긴 회차도 나오도록 바뀐 시간으로 따로 찾는다
+        // 같은 회차에 예외가 두 줄 생겼어도 한 번만 보이도록 먼저 만든 줄만 쓴다
+        val modified = eventExceptionRepository.findModifiedOverlapping(subscribedCalendarIds, dbFrom, dbTo)
+            .sortedBy { it.id }
+            .distinctBy { it.event.id to it.recurrenceId }
+            .filter { it.event.id !in hiddenEventIds }
+            .filter { range.overlaps(requireNotNull(it.startAt), requireNotNull(it.endAt), it.event.isAllDay) }
+            .map { EventResponse.from(it.event, it) }
+        return (singles + occurrences + modified).sortedWith(compareBy({ it.startAt }, { it.id }))
     }
 
     @Transactional
