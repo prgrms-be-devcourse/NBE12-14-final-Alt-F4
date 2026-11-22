@@ -175,4 +175,48 @@ class RecurrenceRuleTest {
     fun `끝이 없는 반복은 recurUntil이 null이다`() {
         assertNull(timed("FREQ=WEEKLY").recurUntil)
     }
+
+    // ===== 자르기 (이 일정과 이후) =====
+
+    // 12/7 한국 오전 8시 회차 = UTC 12/6 23시
+    private val decemberSeventh = Instant.parse("2026-12-06T23:00:00Z")
+
+    @Test
+    fun `COUNT가 있는 규칙을 자르면 COUNT가 빠지고 회차 1초 전 UNTIL이 들어간다`() {
+        // when
+        val result = RecurrenceRule.truncate("FREQ=WEEKLY;COUNT=10;BYDAY=MO", false, decemberSeventh)
+
+        // then
+        assertEquals("FREQ=WEEKLY;BYDAY=MO;UNTIL=20261206T225959Z", result)
+    }
+
+    @Test
+    fun `UNTIL이 있는 규칙을 자르면 새 UNTIL로 바뀌고 나머지는 그대로다`() {
+        // when
+        val result = RecurrenceRule.truncate("rrule:freq=weekly;interval=2;until=20261231T145959Z;byday=mo,we", false, decemberSeventh)
+
+        // then
+        assertEquals("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;UNTIL=20261206T225959Z", result)
+    }
+
+    @Test
+    fun `종일 규칙을 자르면 회차 전날 날짜가 UNTIL이다`() {
+        // when
+        val result = RecurrenceRule.truncate("FREQ=DAILY;COUNT=5", true, Instant.parse("2026-11-18T00:00:00Z"))
+
+        // then
+        assertEquals("FREQ=DAILY;UNTIL=20261117", result)
+    }
+
+    @Test
+    fun `자른 규칙은 다시 검증되고 마지막 회차의 끝이 recurUntil이 된다`() {
+        // given: 매주 월요일 한국 08:00~09:00, 12/7 회차부터 자른다
+        val truncated = RecurrenceRule.truncate("FREQ=WEEKLY;BYDAY=MO", false, decemberSeventh)
+
+        // when
+        val result = timed(truncated)
+
+        // then: 11/30 08:00~09:00 회차의 끝
+        assertEquals(Instant.parse("2026-11-30T00:00:00Z"), result.recurUntil)
+    }
 }

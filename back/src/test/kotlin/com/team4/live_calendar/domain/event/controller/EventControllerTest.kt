@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
+import kotlin.test.assertNotEquals
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -430,6 +431,49 @@ class EventControllerTest(
             jsonPath("$.length()") { value(2) }
             jsonPath("$[1].occurrenceStart") { value("2026-11-29T23:00:00Z") }
         }
+    }
+
+    @Test
+    fun `반복 일정의 이 일정과 이후 수정하면 새 일정을 반환한다`() {
+        // given: 매주 월요일 한국 08:00
+        val id = createRecurringEvent()
+
+        // when: 12/7 회차부터 10시로
+        val body = mockMvc.patch("/api/v1/events/$id") {
+            with(loginAs(owner))
+            param("scope", "THIS_AND_FOLLOWING")
+            param("occurrenceStart", "2026-12-07T08:00:00+09:00")
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {"title": "새 회의",
+                 "startAt": "2026-12-07T10:00:00+09:00", "endAt": "2026-12-07T11:00:00+09:00",
+                 "timezone": "Asia/Seoul", "rrule": "FREQ=WEEKLY;BYDAY=MO"}
+            """
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.title") { value("새 회의") }
+            jsonPath("$.startAt") { value("2026-12-07T01:00:00Z") }
+        }.andReturn().response.contentAsString
+
+        // then: 새 일정이라 id가 다르다
+        val newId = Regex(""""id":(\d+)""").find(body)!!.groupValues[1].toLong()
+        assertNotEquals(id, newId)
+    }
+
+    @Test
+    fun `반복 일정의 이 일정과 이후 삭제하면 204이다`() {
+        // given
+        val id = createRecurringEvent()
+
+        // when
+        val result = mockMvc.delete("/api/v1/events/$id") {
+            with(loginAs(owner))
+            param("scope", "THIS_AND_FOLLOWING")
+            param("occurrenceStart", "2026-12-06T23:00:00Z")
+        }
+
+        // then
+        result.andExpect { status { isNoContent() } }
     }
 
     @Test
