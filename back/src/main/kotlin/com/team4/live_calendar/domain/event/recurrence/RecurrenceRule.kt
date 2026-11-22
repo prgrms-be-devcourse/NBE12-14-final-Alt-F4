@@ -11,6 +11,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.time.temporal.Temporal
 
@@ -34,6 +35,7 @@ object RecurrenceRule {
     private val PREFIX = Regex("^RRULE:", RegexOption.IGNORE_CASE)
     private val TIMED_UNTIL = Regex("""\d{8}T\d{6}Z""")
     private val ALL_DAY_UNTIL = Regex("""\d{8}""")
+    private val TIMED_UNTIL_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
 
     // 시간 일정: startAt·endAt은 UTC 순간, timezone은 요청에 들어온 시간대 (없으면 null)
     // 종일 일정: startAt·endAt은 UTC 자정, timezone은 쓰지 않음 (날짜로 계산)
@@ -60,6 +62,18 @@ object RecurrenceRule {
             val last = lastStart(recur, parts, seed, seed.plusYears(SEARCH_YEARS))
             Result(recur.toString(), last?.toInstant()?.plus(Duration.between(startAt, endAt)))
         }
+    }
+
+    // 이 일정과 이후: occurrenceStart 회차 바로 전까지만 남도록 UNTIL을 바꾼 규칙 (COUNT는 UNTIL로 바뀐다)
+    // 시간 일정은 회차 1초 전(UTC), 종일 일정은 회차 전날. 나머지 부분은 그대로 두고, 결과는 resolve로 다시 검증한다
+    fun truncate(rrule: String, isAllDay: Boolean, occurrenceStart: Instant): String {
+        val until = if (isAllDay) {
+            occurrenceStart.atOffset(ZoneOffset.UTC).toLocalDate().minusDays(1).format(DateTimeFormatter.BASIC_ISO_DATE)
+        } else {
+            TIMED_UNTIL_FORMAT.format(occurrenceStart.minusSeconds(1))
+        }
+        val parts = partsOf(clean(rrule)).filterKeys { it != "COUNT" && it != "UNTIL" } + ("UNTIL" to until)
+        return parts.entries.joinToString(";") { "${it.key}=${it.value}" }
     }
 
     // 앞뒤 공백 제거 → RRULE: 접두사 제거 → 대문자 (ical4j는 소문자 날짜 값을 읽지 못함)
