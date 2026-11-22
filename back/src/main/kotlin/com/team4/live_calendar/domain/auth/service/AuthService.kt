@@ -53,6 +53,18 @@ class AuthService(
         return issueTokens(user)
     }
 
+    @Transactional
+    fun refresh(rawRefreshToken: String): AuthTokens {
+        val user = refreshTokenService.consume(rawRefreshToken)
+        return issueTokens(user)
+    }
+
+    @Transactional
+    fun logout(rawRefreshToken: String) {
+        refreshTokenService.revoke(rawRefreshToken)
+    }
+
+    // 로그인·재발급 공통: 새 Access Token과 새 Refresh Token을 함께 발급한다
     private fun issueTokens(user: User) = AuthTokens(
         accessToken = jwtTokenProvider.createAccessToken(requireNotNull(user.id)),
         accessTokenExpiresIn = jwtTokenProvider.accessTokenExpirySeconds,
