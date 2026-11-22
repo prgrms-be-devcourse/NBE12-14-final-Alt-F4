@@ -14,12 +14,14 @@ import com.team4.live_calendar.domain.event.dto.RecurrenceScope
 import com.team4.live_calendar.domain.event.entity.Event
 import com.team4.live_calendar.domain.event.entity.EventException
 import com.team4.live_calendar.domain.event.entity.EventExceptionType
+import com.team4.live_calendar.domain.event.entity.EventOption
 import com.team4.live_calendar.domain.event.recurrence.RecurrenceExpander
 import com.team4.live_calendar.domain.event.recurrence.RecurrenceRule
 import com.team4.live_calendar.domain.event.recurrence.ViewRange
 import com.team4.live_calendar.domain.event.repository.EventExceptionRepository
 import com.team4.live_calendar.domain.event.repository.EventOptionRepository
 import com.team4.live_calendar.domain.event.repository.EventRepository
+import com.team4.live_calendar.domain.room.entity.RoomSharedEvent
 import com.team4.live_calendar.domain.room.repository.RoomSharedEventRepository
 import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
@@ -54,21 +56,11 @@ class EventService(
             ?: throw BusinessException(ErrorCode.CALENDAR_NOT_FOUND)
         checkEditable(userId, calendar)
 
-        val (startAt, endAt) = toPeriod(request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate)
-        val timezone = givenTimezone(request.timezone)
-        val recurrence = resolveRecurrence(request.rrule, request.isAllDay, startAt, endAt, timezone)
-        val event = Event.create(
-            calendar = calendar,
-            category = findCategoryIn(calendar, request.categoryId),
-            user = userRepository.getReferenceById(userId),
-            title = request.title,
-            description = request.description,
-            location = request.location,
-            startAt = startAt,
-            endAt = endAt,
-            isAllDay = request.isAllDay,
+        val event = buildEvent(
+            calendar, userId, request.categoryId, request.title, request.description, request.location,
+            request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate,
+            givenTimezone(request.timezone), request.rrule,
         )
-        event.changeRecurrence(timezone ?: Event.DEFAULT_TIMEZONE, recurrence?.rrule, recurrence?.recurUntil)
         return EventResponse.from(eventRepository.saveAndFlush(event))
     }
 
@@ -138,7 +130,7 @@ class EventService(
         return (singles + occurrences + modified).sortedWith(compareBy({ it.startAt }, { it.id }))
     }
 
-    // 반복 일정은 scope가 필요하다. THIS면 그 회차만, ALL이면 반복 전체를 수정한다
+    // 반복 일정은 scope가 필요하다. THIS면 그 회차만, THIS_AND_FOLLOWING이면 그 회차부터, ALL이면 반복 전체를 수정한다
     @Transactional
     fun update(
         userId: Long,
@@ -150,8 +142,17 @@ class EventService(
         val event = findEvent(eventId)
         checkEditable(userId, event.calendar)
         val wasRecurring = event.rrule != null
-        if (wasRecurring && requireScope(scope) == RecurrenceScope.THIS) {
-            return updateOccurrence(event, request, occurrenceStart)
+        // 반복 없는 일정은 scope 없이 아래 기존 흐름. 반복 일정은 범위를 빠짐없이 나눈다 (값이 늘면 컴파일러가 알려준다)
+        if (wasRecurring) {
+            when (requireScope(scope)) {
+                RecurrenceScope.THIS -> return updateOccurrence(event, request, occurrenceStart)
+                RecurrenceScope.THIS_AND_FOLLOWING -> {
+                    val (recurrenceId, _) = findOccurrence(event, occurrenceStart)
+                    // 첫 회차에서 고르면 나눌 앞부분이 없어 전체 수정과 같다
+                    if (recurrenceId != event.startAt) return updateFollowing(userId, event, request, recurrenceId)
+                }
+                RecurrenceScope.ALL -> Unit
+            }
         }
 
         // 전체 수정에서 회차 일정(시간·규칙·종일·시간대)이 바뀌면 기존 예외는 원래 회차와 맞지 않아 지운다
@@ -179,14 +180,28 @@ class EventService(
         return EventResponse.from(eventRepository.saveAndFlush(event))
     }
 
-    // 반복 일정은 scope가 필요하다. THIS면 그 회차만, ALL이면 지난 회차까지 모두 삭제한다
+    // 반복 일정은 scope가 필요하다. THIS면 그 회차만, THIS_AND_FOLLOWING이면 그 회차부터, ALL이면 지난 회차까지 모두 삭제한다
     @Transactional
     fun delete(userId: Long, eventId: Long, scope: RecurrenceScope? = null, occurrenceStart: OffsetDateTime? = null) {
         val event = findEvent(eventId)
         checkEditable(userId, event.calendar)
-        if (event.rrule != null && requireScope(scope) == RecurrenceScope.THIS) {
-            deleteOccurrence(event, occurrenceStart)
-            return
+        // 반복 없는 일정은 scope 없이 아래 기존 흐름. 반복 일정은 범위를 빠짐없이 나눈다
+        if (event.rrule != null) {
+            when (requireScope(scope)) {
+                RecurrenceScope.THIS -> {
+                    deleteOccurrence(event, occurrenceStart)
+                    return
+                }
+                RecurrenceScope.THIS_AND_FOLLOWING -> {
+                    val (recurrenceId, _) = findOccurrence(event, occurrenceStart)
+                    // 첫 회차에서 고르면 나눌 앞부분이 없어 전체 삭제와 같다. 아니면 그 회차 전에 반복을 끝낸다
+                    if (recurrenceId != event.startAt) {
+                        endRecurrenceBefore(event, recurrenceId)
+                        return
+                    }
+                }
+                RecurrenceScope.ALL -> Unit
+            }
         }
 
         // 일정을 참조하는 데이터를 먼저 지운다 (FK)
@@ -225,6 +240,41 @@ class EventService(
         return EventResponse.from(event, eventExceptionRepository.saveAndFlush(modified))
     }
 
+    // 이 일정과 이후 수정: 원래 반복은 고른 회차 전에 끝내고, 고른 회차부터는 요청 내용으로 새 일정을 만든다
+    // 새 일정을 먼저 검증해서, 실패하면 원래 일정은 바뀌지 않는다
+    private fun updateFollowing(userId: Long, event: Event, request: EventUpdateRequest, recurrenceId: Instant): EventResponse {
+        // 시간대를 보내지 않으면 원래 일정의 시간대 (원래 일정이 반복 시간 일정일 때만, 1차 수정 규칙과 같음)
+        val timezone = givenTimezone(request.timezone) ?: event.timezone.takeIf { !event.isAllDay }
+        val newEvent = buildEvent(
+            event.calendar, userId, request.categoryId, request.title, request.description, request.location,
+            request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate,
+            timezone, request.rrule,
+        )
+        endRecurrenceBefore(event, recurrenceId)
+        val saved = eventRepository.saveAndFlush(newEvent)
+        copyHiddenAndShares(event, saved)
+        return EventResponse.from(saved)
+    }
+
+    // 이 일정과 이후: 원래 반복을 recurrenceId 회차 바로 전에 끝내고, 그 회차부터의 예외는 지운다
+    private fun endRecurrenceBefore(event: Event, recurrenceId: Instant) {
+        val truncated = RecurrenceRule.truncate(requireNotNull(event.rrule), event.isAllDay, recurrenceId)
+        val result = RecurrenceRule.resolve(truncated, event.isAllDay, event.startAt, event.endAt, event.timezone)
+        event.changeRecurrence(event.timezone, result.rrule, result.recurUntil)
+        eventExceptionRepository.deleteAllByEventIdAndRecurrenceIdGreaterThanEqual(requireNotNull(event.id), recurrenceId)
+    }
+
+    // 원래 일정을 숨긴 설정과 조율방 공유를 새 일정에도 둔다 (사용자에게는 같은 일정의 시간 변경)
+    private fun copyHiddenAndShares(from: Event, to: Event) {
+        val fromId = requireNotNull(from.id)
+        eventOptionRepository.saveAll(
+            eventOptionRepository.findHiddenByEventId(fromId).map { EventOption.create(it.subscribe, to, it.calendar, isVisible = false) },
+        )
+        roomSharedEventRepository.saveAll(
+            roomSharedEventRepository.findAllByEventId(fromId).map { RoomSharedEvent.create(it.member, to, it.displayMode) },
+        )
+    }
+
     // 이 회차만 삭제: 수정했던 회차면 DELETED로 바꾼다
     private fun deleteOccurrence(event: Event, occurrenceStart: OffsetDateTime?) {
         val (recurrenceId, exception) = findOccurrence(event, occurrenceStart)
@@ -254,6 +304,40 @@ class EventService(
 
     // 회차가 생기는 방식. 전체 수정에서 이 값이 바뀌면 기존 예외를 지운다
     private fun Event.schedule(): List<Any?> = listOf(startAt, endAt, isAllDay, timezone, rrule)
+
+    // 생성과 이 일정과 이후 수정이 같이 쓰는 일정 만들기 (검증 포함, 저장은 하지 않음)
+    // timezone: 검증한 시간대 또는 null (null이면 기본값 UTC로 저장)
+    private fun buildEvent(
+        calendar: Calendar,
+        userId: Long,
+        categoryId: Long?,
+        title: String,
+        description: String?,
+        location: String?,
+        isAllDay: Boolean,
+        startAt: OffsetDateTime?,
+        endAt: OffsetDateTime?,
+        startDate: LocalDate?,
+        endDate: LocalDate?,
+        timezone: String?,
+        rrule: String?,
+    ): Event {
+        val period = toPeriod(isAllDay, startAt, endAt, startDate, endDate)
+        val recurrence = resolveRecurrence(rrule, isAllDay, period.first, period.second, timezone)
+        val event = Event.create(
+            calendar = calendar,
+            category = findCategoryIn(calendar, categoryId),
+            user = userRepository.getReferenceById(userId),
+            title = title,
+            description = description,
+            location = location,
+            startAt = period.first,
+            endAt = period.second,
+            isAllDay = isAllDay,
+        )
+        event.changeRecurrence(timezone ?: Event.DEFAULT_TIMEZONE, recurrence?.rrule, recurrence?.recurUntil)
+        return event
+    }
 
     private fun findEvent(eventId: Long): Event =
         eventRepository.findByIdOrNull(eventId) ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
