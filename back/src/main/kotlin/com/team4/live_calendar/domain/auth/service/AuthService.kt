@@ -3,7 +3,6 @@ package com.team4.live_calendar.domain.auth.service
 import com.team4.live_calendar.domain.auth.dto.LoginRequest
 import com.team4.live_calendar.domain.auth.dto.SignupRequest
 import com.team4.live_calendar.domain.auth.dto.SignupResponse
-import com.team4.live_calendar.domain.auth.dto.TokenResponse
 import com.team4.live_calendar.domain.user.entity.User
 import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
@@ -20,6 +19,7 @@ class AuthService(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
     private val jwtTokenProvider: JwtTokenProvider,
+    private val refreshTokenService: RefreshTokenService,
 ) {
 
     @Transactional
@@ -43,18 +43,20 @@ class AuthService(
         return SignupResponse(requireNotNull(saved.id))
     }
 
-    fun login(request: LoginRequest): TokenResponse {
+    @Transactional
+    fun login(request: LoginRequest): AuthTokens {
         val user = userRepository.findByEmail(User.normalizeEmail(request.email))
         val passwordHash = user?.passwordHash
-
         if (user == null || passwordHash == null || !passwordEncoder.matches(request.password, passwordHash)) {
             throw BusinessException(ErrorCode.INVALID_CREDENTIALS)
         }
-
-        return TokenResponse(
-            accessToken = jwtTokenProvider.createAccessToken(requireNotNull(user.id)),
-            expiresIn = jwtTokenProvider.accessTokenExpirySeconds,
-        )
+        return issueTokens(user)
     }
+
+    private fun issueTokens(user: User) = AuthTokens(
+        accessToken = jwtTokenProvider.createAccessToken(requireNotNull(user.id)),
+        accessTokenExpiresIn = jwtTokenProvider.accessTokenExpirySeconds,
+        refreshToken = refreshTokenService.issue(user),
+    )
 
 }
