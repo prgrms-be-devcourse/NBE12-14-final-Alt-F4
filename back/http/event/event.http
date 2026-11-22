@@ -132,7 +132,6 @@ Content-Type: application/json
 ### 반복 일정의 이 일정만 수정 (200) - 11/30(월) 회차만 오후 2시로 옮기고 제목 변경 (격주 월·수라 11/16, 11/18, 11/30, 12/2 …가 회차)
 # occurrenceStart에는 기간 조회 응답의 occurrenceStart(원래 회차 시작)를 그대로 보냅니다. +는 %2B로 인코딩
 # 이 일정만 수정에서는 제목·설명·장소·시간만 바뀝니다. 종일 여부·카테고리는 반복 일정과 같아야 하고 rrule, timezone은 무시합니다
-# "이 일정과 이후"(THIS_AND_FOLLOWING)는 아직 지원하지 않아 400이 납니다. 화면에서는 그 선택지를 숨겨 주세요
 PATCH {{baseUrl}}/api/v1/events/1?scope=THIS&occurrenceStart=2026-11-30T10:00:00%2B09:00
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
@@ -153,6 +152,30 @@ Authorization: Bearer {{accessToken}}
 
 ### 반복 일정을 scope 없이 삭제 (400 RECURRENCE_SCOPE_REQUIRED)
 DELETE {{baseUrl}}/api/v1/events/1
+Authorization: Bearer {{accessToken}}
+
+### 반복 일정의 이 일정과 이후 수정 (200) - 12/28(월) 회차부터 오후 3시로 (회차: 11/16, 11/18, 11/30, 12/2, 12/14, 12/16, 12/28, 12/30)
+# 원래 반복은 12/28 전에 끝나고, 12/28부터는 새 일정(새 id)이 생깁니다. 응답의 id로 화면을 갱신하세요 (첫 회차를 고르면 원래 id)
+# 본문은 고른 회차부터의 새 일정 값입니다. 시작은 고른 회차 이후로 보내세요 (앞으로 보내면 회차가 겹칩니다)
+# COUNT가 있는 반복이면 남은 횟수는 프론트가 계산해서 rrule에 넣습니다. 숨김 설정과 조율방 공유는 새 일정에도 따라갑니다
+PATCH {{baseUrl}}/api/v1/events/1?scope=THIS_AND_FOLLOWING&occurrenceStart=2026-12-28T10:00:00%2B09:00
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "categoryId": null,
+  "title": "스터디 (12/28부터 오후)",
+  "description": null,
+  "location": null,
+  "startAt": "2026-12-28T15:00:00+09:00",
+  "endAt": "2026-12-28T16:00:00+09:00",
+  "timezone": "Asia/Seoul",
+  "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;UNTIL=20261231T145959Z"
+}
+
+### 반복 일정의 이 일정과 이후 삭제 (204) - 12/14(월) 회차부터 반복 그만하기. 지난 회차는 그대로 남습니다
+# 위의 이후 수정이 12/28 전에 반복을 끝냈으므로, 그보다 앞인 12/14를 고릅니다 (한국 10시 = UTC 01시)
+DELETE {{baseUrl}}/api/v1/events/1?scope=THIS_AND_FOLLOWING&occurrenceStart=2026-12-14T01:00:00Z
 Authorization: Bearer {{accessToken}}
 
 ### 반복 일정 전체 수정 (200) - 월·수 → 화·목으로 옮김. 시작일도 첫 회차(화요일)로 같이 옮겨야 합니다
