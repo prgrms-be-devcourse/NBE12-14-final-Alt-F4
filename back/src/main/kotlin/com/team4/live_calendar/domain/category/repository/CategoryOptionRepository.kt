@@ -6,5 +6,3 @@ import org.springframework.data.jpa.repository.JpaRepository
 interface CategoryOptionRepository : JpaRepository<CategoryOption, Long> {
     fun deleteAllBySubscribeId(subscriptionId: Long)
 }
-
-
