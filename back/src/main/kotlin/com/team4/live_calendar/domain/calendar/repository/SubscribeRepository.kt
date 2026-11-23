@@ -1,5 +1,6 @@
 package com.team4.live_calendar.domain.calendar.repository
 
+import com.team4.live_calendar.domain.calendar.entity.CalendarRole
 import com.team4.live_calendar.domain.calendar.entity.Subscribe
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
@@ -16,4 +17,6 @@ interface SubscribeRepository : JpaRepository<Subscribe, Long> {
 
     // 이 그룹에 둔 이용 관계가 있는지 (그룹 주인만 그룹을 쓰므로 그룹 ID로만 본다)
     fun existsByGroupId(groupId: Long): Boolean
+
+    fun findByUserIdAndCalendarIdAndRole(userId: Long, calendarId: Long, role: CalendarRole): Subscribe?
 }
