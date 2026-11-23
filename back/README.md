@@ -77,6 +77,15 @@ IntelliJ에서 `LiveCalendarApplication`을 실행합니다. `local` 프로필�
 2. `auth/auth.http`에서 회원가입 → 로그인을 먼저 실행합니다. 받은 Access Token이 `{{accessToken}}`에 저장되고, Refresh Token 쿠키도 자동으로 저장됩니다.
 3. 다른 파일(`user/user.http`, `event/event.http`)의 요청은 이 토큰으로 실행됩니다.
 
+### API 호출해 보기 (Swagger UI)
+
+1. [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html)을 엽니다.
+2. `POST /api/v1/auth/login`을 실행하고 응답의 `accessToken` 값을 복사합니다.
+3. 오른쪽 위 **Authorize**에 값을 붙여 넣습니다. `Bearer `는 Swagger가 붙이므로 토큰 값만 넣습니다.
+4. 자물쇠가 표시된 API를 실행합니다. 인증 API(`/api/v1/auth/*`)는 토큰 없이 호출됩니다.
+
+Access Token은 30분 뒤 만료됩니다. 그때는 `POST /api/v1/auth/refresh`로 새 토큰을 받아 다시 Authorize에 넣습니다(Refresh Token 쿠키는 브라우저가 자동으로 보냅니다).
+
 ### 테스트 실행
 
 `back` 폴더에서 실행합니다 (`gradlew`가 `back` 폴더에 있습니다).
