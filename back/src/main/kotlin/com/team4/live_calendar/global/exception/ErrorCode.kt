@@ -27,4 +27,8 @@ enum class ErrorCode(
     INVALID_RECURRENCE(HttpStatus.BAD_REQUEST, "반복 규칙이 올바르지 않습니다."),
     RECURRENCE_SCOPE_REQUIRED(HttpStatus.BAD_REQUEST, "반복 일정은 수정·삭제 범위(scope)를 지정해야 합니다."),
     OCCURRENCE_NOT_FOUND(HttpStatus.NOT_FOUND, "반복 일정의 해당 회차를 찾을 수 없습니다."),
+
+    // 캘린더 그룹
+    GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "그룹을 찾을 수 없습니다."),
+    GROUP_NOT_EMPTY(HttpStatus.CONFLICT, "캘린더가 들어 있는 그룹은 삭제할 수 없습니다. 먼저 다른 그룹으로 옮겨 주세요."),
 }
