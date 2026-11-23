@@ -461,6 +461,31 @@ class EventControllerTest(
     }
 
     @Test
+    fun `이 일정과 이후 수정에서 앞 회차가 끝나기 전에 시작하면 400 INVALID_INPUT`() {
+        // given: 매주 월요일 한국 08:00
+        val id = createRecurringEvent()
+
+        // when: 12/7 회차부터인데 새 시작이 앞 회차(11/30 08:00~09:00) 도중
+        val result = mockMvc.patch("/api/v1/events/$id") {
+            with(loginAs(owner))
+            param("scope", "THIS_AND_FOLLOWING")
+            param("occurrenceStart", "2026-12-07T08:00:00+09:00")
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {"title": "새 회의",
+                 "startAt": "2026-11-30T08:30:00+09:00", "endAt": "2026-11-30T09:30:00+09:00",
+                 "timezone": "Asia/Seoul", "rrule": "FREQ=WEEKLY;BYDAY=MO"}
+            """
+        }
+
+        // then
+        result.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_INPUT") }
+        }
+    }
+
+    @Test
     fun `반복 일정의 이 일정과 이후 삭제하면 204이다`() {
         // given
         val id = createRecurringEvent()

@@ -108,6 +108,7 @@ class EventRecurrenceFollowingServiceTest(
         end: String,
         title: String = "주간 회의",
         rrule: String? = "FREQ=WEEKLY;BYDAY=MO",
+        timezone: String? = null,
     ) = EventUpdateRequest(
         categoryId = null,
         title = title,
@@ -115,6 +116,18 @@ class EventRecurrenceFollowingServiceTest(
         location = null,
         startAt = kst(start),
         endAt = kst(end),
+        timezone = timezone,
+        rrule = rrule,
+    )
+
+    private fun allDayUpdate(date: String, rrule: String?, title: String = "새 종일") = EventUpdateRequest(
+        categoryId = null,
+        title = title,
+        description = null,
+        location = null,
+        isAllDay = true,
+        startDate = LocalDate.parse(date),
+        endDate = LocalDate.parse(date),
         rrule = rrule,
     )
 
@@ -326,6 +339,182 @@ class EventRecurrenceFollowingServiceTest(
             )
         }
         assertEquals("FREQ=DAILY;COUNT=5", seriesOf(event).rrule)
+    }
+
+    // ===== 새 일정 시작 검사 (앞 반복의 마지막 회차가 끝난 뒤에 시작) =====
+
+    @Test
+    fun `고른 회차보다 앞당겨도 앞 회차가 끝난 뒤면 이후 수정된다`() {
+        // given: 매주 월요일 08:00 (11/16, 11/23, 11/30 …)
+        val event = createWeekly()
+
+        // when: 11/30 회차부터 일요일 10시로 (앞 회차 11/23 09:00이 끝난 뒤)
+        val response = updateFollowing(
+            event, kst("2026-11-30T08:00"),
+            timedUpdate("2026-11-29T10:00", "2026-11-29T11:00", title = "일요일 회의", rrule = "FREQ=WEEKLY;BYDAY=SU"),
+        )
+
+        // then
+        assertNotEquals(event.id, response.id)
+        assertEquals(
+            listOf("주간 회의", "주간 회의", "일요일 회의", "일요일 회의"),
+            findKst("2026-11-16", "2026-12-07").map { it.title },
+        )
+    }
+
+    @Test
+    fun `앞 회차가 끝나기 전에 시작하면 400 INVALID_INPUT이고 원래 일정은 그대로다`() {
+        // given
+        val event = createWeekly()
+        deleteThis(event, kst("2026-12-14T08:00"))
+        val eventCount = eventRepository.count()
+
+        // when: 11/30 회차부터인데 새 시작이 앞 회차(11/23 08:00~09:00) 도중
+        assertErrorCode(ErrorCode.INVALID_INPUT) {
+            updateFollowing(event, kst("2026-11-30T08:00"), timedUpdate("2026-11-23T08:30", "2026-11-23T09:30"))
+        }
+
+        // then: 원래 반복을 자르지 않았고 새 일정도 없다
+        assertEquals("FREQ=WEEKLY;BYDAY=MO", seriesOf(event).rrule)
+        assertNull(seriesOf(event).recurUntil)
+        assertEquals(1, exceptionsOf(event.id).size)
+        assertEquals(eventCount, eventRepository.count())
+    }
+
+    @Test
+    fun `앞 회차가 끝나는 시각에 시작하면 이후 수정되고 1분 앞이면 400이다`() {
+        // given
+        val event = createWeekly()
+
+        // then: 앞 회차는 11/23 09:00에 끝난다
+        assertErrorCode(ErrorCode.INVALID_INPUT) {
+            updateFollowing(event, kst("2026-11-30T08:00"), timedUpdate("2026-11-23T08:59", "2026-11-23T09:59"))
+        }
+        val response = updateFollowing(event, kst("2026-11-30T08:00"), timedUpdate("2026-11-23T09:00", "2026-11-23T10:00"))
+        assertNotEquals(event.id, response.id)
+        assertEquals(Instant.parse("2026-11-23T00:00:00Z"), response.startAt)
+    }
+
+    @Test
+    fun `새 rrule 없이도 앞 회차가 끝나기 전에 시작하면 400이다`() {
+        // given
+        val event = createWeekly()
+
+        // then
+        assertErrorCode(ErrorCode.INVALID_INPUT) {
+            updateFollowing(event, kst("2026-11-30T08:00"), timedUpdate("2026-11-23T08:30", "2026-11-23T09:30", rrule = null))
+        }
+        assertEquals("FREQ=WEEKLY;BYDAY=MO", seriesOf(event).rrule)
+    }
+
+    @Test
+    fun `종일 반복은 앞 반복의 마지막 날에 새 종일을 시작하면 400이고 다음 날이면 이후 수정된다`() {
+        // given: 11/16 ~ 11/20 매일 종일
+        val event = createAllDayDaily()
+        val occurrence = OffsetDateTime.parse("2026-11-18T00:00:00Z")
+
+        // then: 11/18부터 자르면 앞 반복은 11/17까지
+        assertErrorCode(ErrorCode.INVALID_INPUT) {
+            updateFollowing(event, occurrence, allDayUpdate("2026-11-17", rrule = "FREQ=DAILY;COUNT=3"))
+        }
+        val response = updateFollowing(event, occurrence, allDayUpdate("2026-11-18", rrule = "FREQ=DAILY;COUNT=3"))
+        assertNotEquals(event.id, response.id)
+    }
+
+    @Test
+    fun `종일 반복을 한국 오전 시간 일정으로 이후 수정하면 날짜가 겹치지 않아 된다`() {
+        // given: 11/16 ~ 11/20 매일 종일. 11/18부터 자르면 앞 반복은 11/17까지 (끝 = 11/18 00:00 UTC = 한국 09:00)
+        val event = createAllDayDaily()
+        val occurrence = OffsetDateTime.parse("2026-11-18T00:00:00Z")
+
+        // then: 한국 11/17 저녁은 앞 반복의 마지막 날이라 400
+        assertErrorCode(ErrorCode.INVALID_INPUT) {
+            updateFollowing(
+                event, occurrence,
+                timedUpdate("2026-11-17T20:00", "2026-11-17T21:00", rrule = "FREQ=DAILY", timezone = "Asia/Seoul"),
+            )
+        }
+        // then: 한국 11/18 08:00은 UTC로는 11/17 23:00이지만 날짜로는 겹치지 않는다
+        val response = updateFollowing(
+            event, occurrence,
+            timedUpdate("2026-11-18T08:00", "2026-11-18T09:00", title = "아침 일정", rrule = "FREQ=DAILY", timezone = "Asia/Seoul"),
+        )
+        assertNotEquals(event.id, response.id)
+        assertEquals(Instant.parse("2026-11-17T23:00:00Z"), response.startAt)
+    }
+
+    @Test
+    fun `종일 반복을 시간 일정으로 이후 수정할 때 시작을 UTC(Z)로 보내도 timezone 기준 날짜로 비교한다`() {
+        // given: 11/16 ~ 11/20 매일 종일. 11/18부터 자르면 앞 반복은 11/17까지
+        val event = createAllDayDaily()
+
+        // when: 한국 11/18 08:00을 UTC(Z)로 보낸다 (브라우저 toISOString 형식)
+        val response = updateFollowing(
+            event, OffsetDateTime.parse("2026-11-18T00:00:00Z"),
+            EventUpdateRequest(
+                categoryId = null,
+                title = "아침 일정",
+                description = null,
+                location = null,
+                startAt = OffsetDateTime.parse("2026-11-17T23:00:00Z"),
+                endAt = OffsetDateTime.parse("2026-11-18T00:00:00Z"),
+                timezone = "Asia/Seoul",
+                rrule = "FREQ=DAILY",
+            ),
+        )
+
+        // then
+        assertNotEquals(event.id, response.id)
+        assertEquals(Instant.parse("2026-11-17T23:00:00Z"), response.startAt)
+    }
+
+    @Test
+    fun `회차끼리 겹치는 반복은 고른 회차 날짜 그대로 이후 수정되고 그보다 앞이면 400이다`() {
+        // given: 이틀짜리 종일 일정을 매일 반복 (11/16~17, 11/17~18, 11/18~19 …), 회차끼리 하루씩 겹친다
+        val event = eventService.create(
+            owner.id!!,
+            EventCreateRequest(
+                calendarId = calendar.id!!,
+                categoryId = null,
+                title = "이틀 일정",
+                description = null,
+                location = null,
+                isAllDay = true,
+                startDate = LocalDate.parse("2026-11-16"),
+                endDate = LocalDate.parse("2026-11-17"),
+                rrule = "FREQ=DAILY;COUNT=5",
+            ),
+        )
+        val occurrence = OffsetDateTime.parse("2026-11-18T00:00:00Z")
+        fun twoDays(start: String, end: String) = EventUpdateRequest(
+            categoryId = null,
+            title = "새 이름",
+            description = null,
+            location = null,
+            isAllDay = true,
+            startDate = LocalDate.parse(start),
+            endDate = LocalDate.parse(end),
+            rrule = "FREQ=DAILY;COUNT=3",
+        )
+
+        // then: 앞 회차(11/17~18)는 11/19에 끝나지만, 고른 회차 날짜(11/18)부터는 원래 반복과 같은 모양이라 허용
+        assertErrorCode(ErrorCode.INVALID_INPUT) { updateFollowing(event, occurrence, twoDays("2026-11-17", "2026-11-18")) }
+        val response = updateFollowing(event, occurrence, twoDays("2026-11-18", "2026-11-19"))
+        assertNotEquals(event.id, response.id)
+        assertEquals("새 이름", response.title)
+    }
+
+    @Test
+    fun `시간 반복을 종일로 이후 수정하면 앞 회차와 같은 날은 400이고 다음 날부터 된다`() {
+        // given: 매주 월요일 한국 08:00. 11/30부터 자르면 앞 회차는 11/23
+        val event = createWeekly()
+
+        // then
+        assertErrorCode(ErrorCode.INVALID_INPUT) {
+            updateFollowing(event, kst("2026-11-30T08:00"), allDayUpdate("2026-11-23", rrule = "FREQ=WEEKLY;BYDAY=MO"))
+        }
+        val response = updateFollowing(event, kst("2026-11-30T08:00"), allDayUpdate("2026-11-24", rrule = "FREQ=WEEKLY;BYDAY=TU"))
+        assertNotEquals(event.id, response.id)
     }
 
     // ===== 첫 회차 =====
