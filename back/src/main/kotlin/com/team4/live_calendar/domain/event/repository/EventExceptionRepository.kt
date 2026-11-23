@@ -9,6 +9,9 @@ interface EventExceptionRepository : JpaRepository<EventException, Long> {
 
     fun deleteAllByEventId(eventId: Long)
 
+    // 이 일정과 이후: 자른 지점(recurrenceId) 이후 회차의 예외 삭제
+    fun deleteAllByEventIdAndRecurrenceIdGreaterThanEqual(eventId: Long, recurrenceId: Instant)
+
     // 회차 하나의 예외 (recurrenceId = 원래 회차 시작)
     // 유니크 제약이 없어 동시 요청으로 같은 회차에 두 줄이 생길 수 있으므로, 먼저 만든 한 줄만 쓴다
     fun findFirstByEventIdAndRecurrenceIdOrderByIdAsc(eventId: Long, recurrenceId: Instant): EventException?

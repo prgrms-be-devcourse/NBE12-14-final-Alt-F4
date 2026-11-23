@@ -52,8 +52,8 @@ class EventController(
         @PathVariable id: Long,
     ): EventResponse = eventService.get(userId, id)
 
-    // 반복 일정은 scope 필수 (THIS: 이 일정만, ALL: 모든 반복 일정)
-    // THIS는 occurrenceStart에 기간 조회 응답의 occurrenceStart(원래 회차 시작)를 그대로 보낸다
+    // 반복 일정은 scope 필수 (THIS: 이 일정만, THIS_AND_FOLLOWING: 이 일정과 이후, ALL: 모든 반복 일정)
+    // THIS·THIS_AND_FOLLOWING은 occurrenceStart에 기간 조회 응답의 occurrenceStart(원래 회차 시작)를 그대로 보낸다
     @PatchMapping("/{id}")
     fun update(
         @CurrentUserId userId: Long,
