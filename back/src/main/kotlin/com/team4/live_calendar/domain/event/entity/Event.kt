@@ -106,7 +106,7 @@ class Event protected constructor(
     lateinit var updatedAt: Instant
         protected set
 
-    // 일정 내용 수정 (반복 규칙, 시간대 변경은 반복 일정 단계에서 따로 추가)
+    // 일정 내용 수정 (반복 규칙, 시간대는 changeRecurrence로 바꾼다)
     fun update(
         title: String,
         description: String?,
@@ -123,6 +123,13 @@ class Event protected constructor(
         this.endAt = endAt
         this.isAllDay = isAllDay
         this.category = category
+    }
+
+    // 반복 규칙과 시간대 변경. rrule이 null이면 반복 없음 (recurUntil도 null)
+    fun changeRecurrence(timezone: String, rrule: String?, recurUntil: Instant?) {
+        this.timezone = timezone
+        this.rrule = rrule
+        this.recurUntil = recurUntil
     }
 
     companion object {

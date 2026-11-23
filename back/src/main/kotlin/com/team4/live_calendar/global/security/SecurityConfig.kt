@@ -35,6 +35,8 @@ class SecurityConfig(
             authorizeHttpRequests {
                 authorize(HttpMethod.POST, "/api/v1/auth/signup", permitAll)
                 authorize(HttpMethod.POST, "/api/v1/auth/login", permitAll)
+                authorize(HttpMethod.POST, "/api/v1/auth/refresh", permitAll)
+                authorize(HttpMethod.POST, "/api/v1/auth/logout", permitAll)
 
                 authorize("/actuator/health", permitAll)
                 authorize("/actuator/info", permitAll)
