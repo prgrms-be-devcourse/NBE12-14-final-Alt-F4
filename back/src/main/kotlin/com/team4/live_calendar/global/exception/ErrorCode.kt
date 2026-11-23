@@ -23,4 +23,7 @@ enum class ErrorCode(
     CATEGORY_NOT_IN_CALENDAR(HttpStatus.BAD_REQUEST, "일정과 같은 캘린더의 카테고리만 지정할 수 있습니다."),
     INVALID_EVENT_TIME(HttpStatus.BAD_REQUEST, "종료 일시는 시작 일시보다 빠를 수 없습니다."),
     INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "조회 기간이 올바르지 않습니다."),
+
+    // 구독
+    CALENDAR_RELATION_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 이용 중인 캘린더입니다."),
 }
