@@ -4,4 +4,5 @@ enum class CalendarRole {
     OWNER,
     EDITOR,
     VIEWER,
+    SUBSCRIBER,
 }

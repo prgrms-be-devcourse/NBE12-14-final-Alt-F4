@@ -27,4 +27,7 @@ enum class ErrorCode(
     INVALID_RECURRENCE(HttpStatus.BAD_REQUEST, "반복 규칙이 올바르지 않습니다."),
     RECURRENCE_SCOPE_REQUIRED(HttpStatus.BAD_REQUEST, "반복 일정은 수정·삭제 범위(scope)를 지정해야 합니다."),
     OCCURRENCE_NOT_FOUND(HttpStatus.NOT_FOUND, "반복 일정의 해당 회차를 찾을 수 없습니다."),
+
+    // 구독
+    CALENDAR_RELATION_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 이용 중인 캘린더입니다."),
 }
