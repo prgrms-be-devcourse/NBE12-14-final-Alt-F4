@@ -30,4 +30,8 @@ enum class ErrorCode(
 
     // 구독
     CALENDAR_RELATION_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 이용 중인 캘린더입니다."),
+
+    // 캘린더 그룹
+    GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "그룹을 찾을 수 없습니다."),
+    GROUP_NOT_EMPTY(HttpStatus.CONFLICT, "캘린더가 들어 있는 그룹은 삭제할 수 없습니다. 먼저 다른 그룹으로 옮겨 주세요."),
 }
