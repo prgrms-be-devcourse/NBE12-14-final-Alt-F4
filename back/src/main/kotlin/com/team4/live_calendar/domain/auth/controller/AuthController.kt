@@ -9,12 +9,15 @@ import com.team4.live_calendar.domain.auth.service.AuthTokens
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
 import com.team4.live_calendar.global.security.RefreshTokenCookieFactory
+import io.swagger.v3.oas.annotations.security.SecurityRequirements
 import jakarta.validation.Valid
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
+// 인증 API는 토큰 없이 호출한다. Swagger가 Authorization 헤더를 붙이지 않게 전역 인증 표시를 비운다
+@SecurityRequirements
 @RestController
 @RequestMapping("/api/v1/auth")
 class AuthController(

@@ -5,6 +5,8 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatusCode
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.AccessDeniedException
+import org.springframework.security.core.AuthenticationException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -20,6 +22,20 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
     fun handleBusinessException(e: BusinessException): ResponseEntity<ProblemDetail> {
         log.debug("Business exception: {}", e.errorCode, e)
         return toResponse(e.errorCode, e.message)
+    }
+
+    // Security 필터의 인증 실패(토큰 없음·만료·위조)도 EntryPoint를 거쳐 여기로 와서 같은 형식으로 응답한다
+    @ExceptionHandler(AuthenticationException::class)
+    fun handleAuthentication(e: AuthenticationException): ResponseEntity<ProblemDetail> {
+        log.debug("Authentication failed: {}", e.message)
+        return toResponse(ErrorCode.UNAUTHORIZED)
+    }
+
+    // 이 핸들러가 없으면 AccessDeniedException이 맨 아래 Exception 처리로 가서 500이 된다
+    @ExceptionHandler(AccessDeniedException::class)
+    fun handleAccessDenied(e: AccessDeniedException): ResponseEntity<ProblemDetail> {
+        log.debug("Access denied: {}", e.message)
+        return toResponse(ErrorCode.FORBIDDEN)
     }
 
     override fun handleMethodArgumentNotValid(
