@@ -16,6 +16,7 @@ concurrency:
 jobs:
   deploy:
     name: Build and Deploy
+
     runs-on: [self-hosted, linux, x64]
 
     steps:
@@ -46,3 +47,6 @@ jobs:
             up -d backend frontend
 
           echo "Deployment completed successfully"
+
+
+
