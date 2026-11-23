@@ -2,6 +2,7 @@ package com.team4.live_calendar.domain.event.repository
 
 import com.team4.live_calendar.domain.event.entity.Event
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import java.time.Instant
 
@@ -31,4 +32,9 @@ interface EventRepository : JpaRepository<Event, Long> {
         """,
     )
     fun findRecurringCandidates(calendarIds: Collection<Long>, from: Instant, to: Instant): List<Event>
+
+    // 캘린더 삭제: 이 캘린더의 일정 (카테고리보다 먼저)
+    @Modifying
+    @Query("delete from Event e where e.calendar.id = :calendarId")
+    fun deleteAllInCalendar(calendarId: Long): Int
 }

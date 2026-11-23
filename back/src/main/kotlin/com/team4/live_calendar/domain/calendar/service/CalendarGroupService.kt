@@ -60,8 +60,22 @@ class CalendarGroupService(
         calendarGroupRepository.delete(group)
     }
 
+    // 캘린더를 둘 기본 그룹: 내 첫 그룹(조회와 같은 순서), 그룹이 하나도 없으면 "내 캘린더" 그룹을 만든다
+    // 캘린더 생성에서 쓰고, 구독·조율방 공통 캘린더도 그룹이 필요하므로 같이 쓸 수 있게 공개해 둔다
+    // 그룹이 없는 사람이 동시에 두 번 부르면 "내 캘린더"가 두 개 생길 수 있다 (같은 이름 허용, 드물어서 막지 않음)
+    @Transactional
+    fun findOrCreateDefaultGroup(userId: Long): CalendarGroup =
+        calendarGroupRepository.findAllByUserIdOrdered(userId).firstOrNull()
+            ?: calendarGroupRepository.save(
+                CalendarGroup.create(userRepository.getReferenceById(userId), DEFAULT_GROUP_NAME, displayOrder = 0),
+            )
+
     // 없는 그룹과 남의 그룹은 같은 404 (남의 그룹이 있는지 알려주지 않는다)
     private fun findMyGroup(userId: Long, groupId: Long): CalendarGroup =
         calendarGroupRepository.findByIdAndUserId(groupId, userId)
             ?: throw BusinessException(ErrorCode.GROUP_NOT_FOUND)
+
+    companion object {
+        const val DEFAULT_GROUP_NAME = "내 캘린더"
+    }
 }

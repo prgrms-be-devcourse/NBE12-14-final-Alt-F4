@@ -85,6 +85,11 @@ class Subscribe protected constructor(
     lateinit var updatedAt: Instant
         protected set
 
+    // 내 화면에서 이 캘린더를 둘 그룹을 바꾼다 (원본·역할·다른 사람의 배치는 그대로)
+    fun moveTo(group: CalendarGroup) {
+        this.group = group
+    }
+
     companion object {
         fun create(
             user: User,
