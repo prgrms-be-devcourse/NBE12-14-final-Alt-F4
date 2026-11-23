@@ -27,9 +27,9 @@ class SubscribeControllerTest(
     @Test
     fun `본인의 구독을 해지하면 204와 빈 본문을 반환한다`() {
         val subscriber = persist(User.signUp("subscriber@mail.com", "{bcrypt}hash", "구독자"))
-        val subscriptionId = createSubscription(subscriber)
+        val calendarId = createSubscribedCalendar(subscriber)
 
-        mockMvc.delete("/api/v1/subscriptions/$subscriptionId") {
+        mockMvc.delete("/api/v1/calendars/$calendarId/subscription") {
             with(loginAs(subscriber))
         }.andExpect {
             status { isNoContent() }
@@ -41,9 +41,9 @@ class SubscribeControllerTest(
     fun `다른 사용자의 구독을 해지하려 하면 404를 반환한다`() {
         val subscriber = persist(User.signUp("subscriber@mail.com", "{bcrypt}hash", "구독자"))
         val requester = persist(User.signUp("requester@mail.com", "{bcrypt}hash", "요청자"))
-        val subscriptionId = createSubscription(subscriber)
+        val calendarId = createSubscribedCalendar(subscriber)
 
-        mockMvc.delete("/api/v1/subscriptions/$subscriptionId") {
+        mockMvc.delete("/api/v1/calendars/$calendarId/subscription") {
             with(loginAs(requester))
         }.andExpect {
             status { isNotFound() }
@@ -51,15 +51,17 @@ class SubscribeControllerTest(
         }
     }
 
-    private fun createSubscription(subscriber: User): Long {
+    private fun createSubscribedCalendar(subscriber: User): Long {
         val group = persist(CalendarGroup.create(subscriber, "구독자 그룹", null))
         val calendar = persist(Calendar.create("원본 캘린더", null, null))
+        val calendarId = checkNotNull(calendar.id)
 
-        return subscribeService.subscribe(
+        subscribeService.subscribe(
             userId = checkNotNull(subscriber.id),
             groupId = checkNotNull(group.id),
-            calendarId = checkNotNull(calendar.id),
+            calendarId = calendarId,
         )
+        return calendarId
     }
 
     private fun loginAs(user: User) =

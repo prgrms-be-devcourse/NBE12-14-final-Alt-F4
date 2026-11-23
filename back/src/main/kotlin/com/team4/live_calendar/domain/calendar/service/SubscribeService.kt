@@ -45,13 +45,14 @@ class SubscribeService(
     }
 
     @Transactional
-    fun cancel(userId: Long, subscriptionId: Long) {
-        val subscription = subscribeRepository.findByIdAndUserIdAndRole(
-            id = subscriptionId,
+    fun cancel(userId: Long, calendarId: Long) {
+        val subscription = subscribeRepository.findByUserIdAndCalendarIdAndRole(
             userId = userId,
+            calendarId = calendarId,
             role = CalendarRole.SUBSCRIBER,
         ) ?: throw BusinessException(ErrorCode.SUBSCRIPTION_NOT_FOUND)
 
+        val subscriptionId = checkNotNull(subscription.id)
         eventOptionRepository.deleteAllBySubscribeId(subscriptionId)
         categoryOptionRepository.deleteAllBySubscribeId(subscriptionId)
         subscribeRepository.delete(subscription)

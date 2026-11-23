@@ -230,10 +230,11 @@ class SubscribeServiceTest(
         val ownerId = checkNotNull(owner.id)
         val subscriberId = checkNotNull(subscriber.id)
         val eventId = checkNotNull(event.id)
+        val calendarId = checkNotNull(calendar.id)
         val subscriptionId = service.subscribe(
             userId = subscriberId,
             groupId = checkNotNull(subscriberGroup.id),
-            calendarId = checkNotNull(calendar.id),
+            calendarId = calendarId,
         )
         val subscription = checkNotNull(em.find(Subscribe::class.java, subscriptionId))
 
@@ -250,7 +251,7 @@ class SubscribeServiceTest(
 
         assertEquals(listOf(eventId), eventService.findInRange(subscriberId, from, to).map { it.id })
 
-        service.cancel(subscriberId, subscriptionId)
+        service.cancel(subscriberId, calendarId)
         em.flush()
         em.clear()
 
@@ -273,16 +274,17 @@ class SubscribeServiceTest(
         em.persist(group)
         em.persist(calendar)
 
-        val subscriptionId = service.subscribe(
+        val calendarId = checkNotNull(calendar.id)
+        service.subscribe(
             userId = checkNotNull(subscriber.id),
             groupId = checkNotNull(group.id),
-            calendarId = checkNotNull(calendar.id),
+            calendarId = calendarId,
         )
 
         val exception = assertFailsWith<BusinessException> {
             service.cancel(
                 userId = checkNotNull(requester.id),
-                subscriptionId = subscriptionId,
+                calendarId = calendarId,
             )
         }
 
@@ -305,7 +307,7 @@ class SubscribeServiceTest(
         val exception = assertFailsWith<BusinessException> {
             service.cancel(
                 userId = checkNotNull(owner.id),
-                subscriptionId = checkNotNull(ownerRelation.id),
+                calendarId = checkNotNull(calendar.id),
             )
         }
 

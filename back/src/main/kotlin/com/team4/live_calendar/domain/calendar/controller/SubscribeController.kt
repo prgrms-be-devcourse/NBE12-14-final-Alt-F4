@@ -10,16 +10,16 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@RequestMapping("/api/v1/subscriptions")
+@RequestMapping("/api/v1/calendars")
 class SubscribeController(
     private val subscribeService: SubscribeService,
 ) {
-    @DeleteMapping("/{subscriptionId}")
+    @DeleteMapping("/{calendarId}/subscription")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun cancel(
         @CurrentUserId userId: Long,
-        @PathVariable("subscriptionId") subscriptionId: Long,
+        @PathVariable("calendarId") calendarId: Long,
     ) {
-        subscribeService.cancel(userId, subscriptionId)
+        subscribeService.cancel(userId, calendarId)
     }
 }
