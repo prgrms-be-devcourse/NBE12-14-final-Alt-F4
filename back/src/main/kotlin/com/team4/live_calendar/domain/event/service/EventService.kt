@@ -196,7 +196,7 @@ class EventService(
                     val (recurrenceId, _) = findOccurrence(event, occurrenceStart)
                     // 첫 회차에서 고르면 나눌 앞부분이 없어 전체 삭제와 같다. 아니면 그 회차 전에 반복을 끝낸다
                     if (recurrenceId != event.startAt) {
-                        endRecurrenceBefore(event, recurrenceId)
+                        endRecurrenceBefore(event, recurrenceId, truncatedRecurrence(event, recurrenceId))
                         return
                     }
                 }
@@ -241,7 +241,8 @@ class EventService(
     }
 
     // 이 일정과 이후 수정: 원래 반복은 고른 회차 전에 끝내고, 고른 회차부터는 요청 내용으로 새 일정을 만든다
-    // 새 일정을 먼저 검증해서, 실패하면 원래 일정은 바뀌지 않는다
+    // 순서: 새 일정 검증 → 자를 규칙 계산 → 새 일정 시작 검사 → 원래 반복 자르기 → 새 일정 저장
+    // 검증이나 검사에 걸리면 원래 일정은 바뀌지 않는다
     private fun updateFollowing(userId: Long, event: Event, request: EventUpdateRequest, recurrenceId: Instant): EventResponse {
         // 시간대를 보내지 않으면 원래 일정의 시간대 (원래 일정이 반복 시간 일정일 때만, 1차 수정 규칙과 같음)
         val timezone = givenTimezone(request.timezone) ?: event.timezone.takeIf { !event.isAllDay }
@@ -250,18 +251,56 @@ class EventService(
             request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate,
             timezone, request.rrule,
         )
-        endRecurrenceBefore(event, recurrenceId)
+        val truncated = truncatedRecurrence(event, recurrenceId)
+        checkStartsAfter(event, truncated, recurrenceId, newEvent, request.startAt, timezone)
+        endRecurrenceBefore(event, recurrenceId, truncated)
         val saved = eventRepository.saveAndFlush(newEvent)
         copyHiddenAndShares(event, saved)
         return EventResponse.from(saved)
     }
 
-    // 이 일정과 이후: 원래 반복을 recurrenceId 회차 바로 전에 끝내고, 그 회차부터의 예외는 지운다
-    private fun endRecurrenceBefore(event: Event, recurrenceId: Instant) {
+    // 이 일정과 이후: 원래 반복을 recurrenceId 회차 바로 전에 끝낸 규칙과 마지막 회차의 끝 (계산만, 원래 일정은 바꾸지 않는다)
+    private fun truncatedRecurrence(event: Event, recurrenceId: Instant): RecurrenceRule.Result {
         val truncated = RecurrenceRule.truncate(requireNotNull(event.rrule), event.isAllDay, recurrenceId)
-        val result = RecurrenceRule.resolve(truncated, event.isAllDay, event.startAt, event.endAt, event.timezone)
-        event.changeRecurrence(event.timezone, result.rrule, result.recurUntil)
+        return RecurrenceRule.resolve(truncated, event.isAllDay, event.startAt, event.endAt, event.timezone)
+    }
+
+    // 계산한 규칙으로 원래 반복을 끝내고, 그 회차부터의 예외는 지운다
+    private fun endRecurrenceBefore(event: Event, recurrenceId: Instant, truncated: RecurrenceRule.Result) {
+        event.changeRecurrence(event.timezone, truncated.rrule, truncated.recurUntil)
         eventExceptionRepository.deleteAllByEventIdAndRecurrenceIdGreaterThanEqual(requireNotNull(event.id), recurrenceId)
+    }
+
+    // 새 일정은 잘린 원래 반복의 마지막 회차가 끝난 뒤에 시작해야 한다 (같은 시각은 허용, 고른 회차보다 앞당기는 건 된다)
+    // 종일 일정은 날짜를 UTC 자정으로 저장한다. 종일과 시간이 섞이면 종일 쪽 날짜를 시간 쪽 시간대의 자정으로 바꿔 비교한다
+    // (그대로 비교하면 매일 종일을 한국 오전 8시 시간 일정으로 바꾸는 요청이 앞 반복과 겹친다고 잘못 막힌다)
+    // 종일 → 시간의 시간 쪽 시간대는 요청 timezone, 없으면 요청 startAt의 시차 (startAt은 UTC(Z)로 올 수도 있어 timezone을 먼저 쓴다)
+    private fun checkStartsAfter(
+        original: Event,
+        truncated: RecurrenceRule.Result,
+        recurrenceId: Instant,
+        newEvent: Event,
+        requestStartAt: OffsetDateTime?,
+        timezone: String?,
+    ) {
+        // 기준은 앞 반복의 마지막 회차가 끝나는 시각. 단, 고른 회차의 원래 시작보다 늦지는 않게 한다
+        // (일정 길이가 회차 간격보다 긴 반복은 앞 회차가 고른 회차 뒤에 끝난다. 고른 회차 시각부터 시작하면 원래 반복과 같은 모양이라 허용)
+        // 마지막 회차를 못 찾으면(반복 시작에서 200년 넘게 뒤의 회차) 수정 전처럼 검사하지 않는다
+        val originalEnd = truncated.recurUntil?.let { minOf(it, recurrenceId) } ?: return
+        val (limit, newStart) = when {
+            original.isAllDay && !newEvent.isAllDay -> {
+                val zone = timezone?.let { ZoneId.of(it) } ?: requireNotNull(requestStartAt).offset
+                originalEnd.atOffset(ZoneOffset.UTC).toLocalDate().atStartOfDay(zone).toInstant() to newEvent.startAt
+            }
+            !original.isAllDay && newEvent.isAllDay -> {
+                val zone = ZoneId.of(original.timezone)
+                originalEnd to newEvent.startAt.atOffset(ZoneOffset.UTC).toLocalDate().atStartOfDay(zone).toInstant()
+            }
+            else -> originalEnd to newEvent.startAt
+        }
+        if (newStart < limit) {
+            throw BusinessException(ErrorCode.INVALID_INPUT, "새 일정은 앞 반복의 마지막 회차가 끝난 뒤에 시작해야 합니다.")
+        }
     }
 
     // 원래 일정을 숨긴 설정과 조율방 공유를 새 일정에도 둔다 (사용자에게는 같은 일정의 시간 변경)

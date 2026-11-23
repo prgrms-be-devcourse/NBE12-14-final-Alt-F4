@@ -13,7 +13,7 @@ import java.time.OffsetDateTime
 //   시간이 바뀐 것으로 판단돼 이 일정만 수정·삭제한 회차들도 원래대로 돌아간다
 // - scope=THIS: 그 회차의 제목·설명·장소·시간만 바뀐다. 종일 여부·카테고리는 반복 일정과 같아야 하고 rrule, timezone은 무시한다
 // - scope=THIS_AND_FOLLOWING: 고른 회차부터의 새 일정 값을 보낸다. 원래 반복은 그 회차 전에 끝나고 새 일정(새 id)이 생긴다
-//   새 일정의 시작은 고른 회차 이후로 보낸다 (앞으로 보내면 회차가 겹친다). 첫 회차를 고르면 ALL과 같다
+//   새 일정은 고른 회차보다 앞당겨도 되지만, 앞에 남는 마지막 회차가 끝나기 전에 시작하면 400이다. 첫 회차를 고르면 ALL과 같다
 //   응답의 id로 화면을 갱신한다 (보통 새 id, 첫 회차면 원래 id). COUNT 반복이면 남은 횟수는 프론트가 계산해서 rrule에 넣는다
 class EventUpdateRequest(
     val categoryId: Long?,
