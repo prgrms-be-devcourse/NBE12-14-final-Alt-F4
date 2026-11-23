@@ -19,6 +19,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 @EnableWebSecurity
 class SecurityConfig(
     private val corsProperties: CorsProperties,
+    private val authenticationEntryPoint: ProblemDetailAuthenticationEntryPoint,
+    private val accessDeniedHandler: ProblemDetailAccessDeniedHandler,
 ) {
 
     @Bean
@@ -49,7 +51,16 @@ class SecurityConfig(
                 authorize(anyRequest, authenticated)
             }
 
+            // 토큰이 아예 없는 요청 등 필터 체인 전체의 인증·인가 실패
+            exceptionHandling {
+                authenticationEntryPoint = this@SecurityConfig.authenticationEntryPoint
+                accessDeniedHandler = this@SecurityConfig.accessDeniedHandler
+            }
+
+            // Bearer 토큰 검증 실패(만료·위조)는 Resource Server가 따로 처리하므로 여기도 지정한다
             oauth2ResourceServer {
+                authenticationEntryPoint = this@SecurityConfig.authenticationEntryPoint
+                accessDeniedHandler = this@SecurityConfig.accessDeniedHandler
                 jwt { }
             }
 
