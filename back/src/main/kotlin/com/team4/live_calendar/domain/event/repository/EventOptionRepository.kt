@@ -15,4 +15,6 @@ interface EventOptionRepository : JpaRepository<EventOption, Long> {
     // 이 일정을 숨긴 설정 (이 일정과 이후 수정에서 새 일정으로 복사)
     @Query("select o from EventOption o where o.event.id = :eventId and o.isVisible = false")
     fun findHiddenByEventId(eventId: Long): List<EventOption>
+
+    fun deleteAllBySubscribeId(subscribeIds: Long)
 }

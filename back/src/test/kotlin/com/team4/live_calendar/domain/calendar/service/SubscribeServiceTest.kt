@@ -4,8 +4,11 @@ import com.team4.live_calendar.domain.calendar.entity.Calendar
 import com.team4.live_calendar.domain.calendar.entity.CalendarGroup
 import com.team4.live_calendar.domain.calendar.entity.CalendarRole
 import com.team4.live_calendar.domain.calendar.entity.Subscribe
+import com.team4.live_calendar.domain.category.entity.CategoryOption
+import com.team4.live_calendar.domain.category.entity.EventCategory
 import com.team4.live_calendar.domain.event.dto.EventUpdateRequest
 import com.team4.live_calendar.domain.event.entity.Event
+import com.team4.live_calendar.domain.event.entity.EventOption
 import com.team4.live_calendar.domain.event.service.EventService
 import com.team4.live_calendar.domain.user.entity.User
 import com.team4.live_calendar.global.config.JpaConfig
@@ -22,6 +25,7 @@ import java.time.OffsetDateTime
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
 
 @DataJpaTest
 @Import(JpaConfig::class, SubscribeService::class, EventService::class)
@@ -189,5 +193,122 @@ class SubscribeServiceTest(
         }
 
         assertEquals(ErrorCode.FORBIDDEN, exception.errorCode)
+    }
+
+    @Test
+    fun `구독을 해지하면 개인 설정이 삭제되고 구독자의 일정 조회에서 빠진다`() {
+        val owner = User.signUp("owner@mail.com", "{bcrypt}hash", "소유자")
+        val subscriber = User.signUp("subscriber@mail.com", "{bcrypt}hash", "구독자")
+        em.persist(owner)
+        em.persist(subscriber)
+
+        val ownerGroup = CalendarGroup.create(owner, "소유자 그룹", null)
+        val subscriberGroup = CalendarGroup.create(subscriber, "구독자 그룹", null)
+        val calendar = Calendar.create("원본 캘린더", null, null)
+        em.persist(ownerGroup)
+        em.persist(subscriberGroup)
+        em.persist(calendar)
+        em.persist(Subscribe.create(owner, ownerGroup, calendar, CalendarRole.OWNER, null))
+
+        val category = EventCategory.create(calendar, "스터디", null)
+        em.persist(category)
+
+        val start = OffsetDateTime.parse("2026-11-20T10:00:00+09:00")
+        val end = start.plusHours(1)
+        val event = Event.create(
+            calendar = calendar,
+            category = category,
+            user = owner,
+            title = "스터디 일정",
+            description = null,
+            location = null,
+            startAt = start.toInstant(),
+            endAt = end.toInstant(),
+        )
+        em.persist(event)
+
+        val ownerId = checkNotNull(owner.id)
+        val subscriberId = checkNotNull(subscriber.id)
+        val eventId = checkNotNull(event.id)
+        val subscriptionId = service.subscribe(
+            userId = subscriberId,
+            groupId = checkNotNull(subscriberGroup.id),
+            calendarId = checkNotNull(calendar.id),
+        )
+        val subscription = checkNotNull(em.find(Subscribe::class.java, subscriptionId))
+
+        val eventOption = EventOption.create(subscription, event, calendar)
+        val categoryOption = CategoryOption.create(subscription, category, calendar)
+        em.persist(eventOption)
+        em.persist(categoryOption)
+        em.flush()
+
+        val eventOptionId = checkNotNull(eventOption.id)
+        val categoryOptionId = checkNotNull(categoryOption.id)
+        val from = start.minusHours(1)
+        val to = end.plusHours(1)
+
+        assertEquals(listOf(eventId), eventService.findInRange(subscriberId, from, to).map { it.id })
+
+        service.cancel(subscriberId, subscriptionId)
+        em.flush()
+        em.clear()
+
+        assertNull(em.find(Subscribe::class.java, subscriptionId))
+        assertNull(em.find(EventOption::class.java, eventOptionId))
+        assertNull(em.find(CategoryOption::class.java, categoryOptionId))
+        assertTrue(eventService.findInRange(subscriberId, from, to).isEmpty())
+        assertEquals(listOf(eventId), eventService.findInRange(ownerId, from, to).map { it.id })
+    }
+
+    @Test
+    fun `다른 사용자의 구독은 해지할 수 없다`() {
+        val subscriber = User.signUp("subscriber@mail.com", "{bcrypt}hash", "구독자")
+        val requester = User.signUp("requester@mail.com", "{bcrypt}hash", "요청자")
+        em.persist(subscriber)
+        em.persist(requester)
+
+        val group = CalendarGroup.create(subscriber, "구독자 그룹", null)
+        val calendar = Calendar.create("원본 캘린더", null, null)
+        em.persist(group)
+        em.persist(calendar)
+
+        val subscriptionId = service.subscribe(
+            userId = checkNotNull(subscriber.id),
+            groupId = checkNotNull(group.id),
+            calendarId = checkNotNull(calendar.id),
+        )
+
+        val exception = assertFailsWith<BusinessException> {
+            service.cancel(
+                userId = checkNotNull(requester.id),
+                subscriptionId = subscriptionId,
+            )
+        }
+
+        assertEquals(ErrorCode.SUBSCRIPTION_NOT_FOUND, exception.errorCode)
+    }
+
+    @Test
+    fun `본인의 OWNER 관계는 구독 해지로 삭제할 수 없다`() {
+        val owner = User.signUp("owner@mail.com", "{bcrypt}hash", "소유자")
+        em.persist(owner)
+
+        val group = CalendarGroup.create(owner, "소유자 그룹", null)
+        val calendar = Calendar.create("원본 캘린더", null, null)
+        em.persist(group)
+        em.persist(calendar)
+
+        val ownerRelation = Subscribe.create(owner, group, calendar, CalendarRole.OWNER, null)
+        em.persist(ownerRelation)
+
+        val exception = assertFailsWith<BusinessException> {
+            service.cancel(
+                userId = checkNotNull(owner.id),
+                subscriptionId = checkNotNull(ownerRelation.id),
+            )
+        }
+
+        assertEquals(ErrorCode.SUBSCRIPTION_NOT_FOUND, exception.errorCode)
     }
 }
