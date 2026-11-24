@@ -37,7 +37,7 @@ class ErdMappingTest(
         "room_invitations" to "id room_id status responded_at? created_at updated_at inviter_id invitee_id",
         "room_members" to "id room_id joined_at user_id",
         "subscribes" to "id user_id group_id calendar_id role color? is_visible created_at updated_at",
-        "share_info" to "id user_id title group_name? content? created_at updated_at",
+        "share_info" to "id user_id title group_name? content? is_public created_at updated_at",
     )
 
     @Test
