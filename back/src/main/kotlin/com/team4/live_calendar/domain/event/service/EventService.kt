@@ -388,7 +388,7 @@ class EventService(
 
     // 생성·수정·삭제는 같은 편집 권한으로 확인
     private fun checkEditable(userId: Long, calendar: Calendar) {
-        if (checkReadable(userId, calendar).role !in EDITABLE_ROLES) {
+        if (checkReadable(userId, calendar).role !in CalendarRole.EDITABLE_ROLES) {
             throw BusinessException(ErrorCode.FORBIDDEN)
         }
     }
@@ -462,7 +462,6 @@ class EventService(
     private fun Subscribe.idOrThrow(): Long = requireNotNull(id)
 
     companion object {
-        private val EDITABLE_ROLES = setOf(CalendarRole.OWNER, CalendarRole.EDITOR)
         private val MAX_RANGE: Duration = Duration.ofDays(93)
         private val DB_MARGIN: Duration = Duration.ofDays(1)
     }

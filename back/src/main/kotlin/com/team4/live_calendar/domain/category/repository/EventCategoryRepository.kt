@@ -11,4 +11,12 @@ interface EventCategoryRepository : JpaRepository<EventCategory, Long> {
     @Modifying
     @Query("delete from EventCategory c where c.calendar.id = :calendarId")
     fun deleteAllInCalendar(calendarId: Long): Int
+
+    // 그룹 조회: 내 캘린더들의 카테고리 (만든 순서)
+    fun findAllByCalendarIdInOrderByIdAsc(calendarIds: Collection<Long>): List<EventCategory>
+
+    // 카테고리 삭제: 마지막으로 카테고리 자체
+    @Modifying
+    @Query("delete from EventCategory c where c.id = :categoryId")
+    fun deleteCategory(categoryId: Long): Int
 }

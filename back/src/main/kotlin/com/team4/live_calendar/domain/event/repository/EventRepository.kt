@@ -37,4 +37,10 @@ interface EventRepository : JpaRepository<Event, Long> {
     @Modifying
     @Query("delete from Event e where e.calendar.id = :calendarId")
     fun deleteAllInCalendar(calendarId: Long): Int
+
+    // 카테고리 삭제: 일정은 남기고 카테고리 칸만 비운다 (반복 일정 포함)
+    // 벌크 update라 Auditing을 거치지 않아 updated_at은 바뀌지 않는다
+    @Modifying
+    @Query("update Event e set e.category = null where e.category.id = :categoryId")
+    fun clearCategory(categoryId: Long): Int
 }

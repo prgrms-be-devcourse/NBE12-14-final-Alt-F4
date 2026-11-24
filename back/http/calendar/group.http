@@ -25,7 +25,7 @@ Content-Type: application/json
   "name": "   "
 }
 
-### 내 그룹과 그 안의 캘린더 조회 (200) - 그룹이 없으면 빈 목록. 캘린더의 id는 일정 API의 calendarId로 그대로 씁니다
+### 내 그룹과 그 안의 캘린더 조회 (200) - 그룹이 없으면 빈 목록. 캘린더의 id는 일정 API의 calendarId로 그대로 씁니다. 캘린더마다 categories(그 캘린더의 카테고리)가 같이 나옵니다
 GET {{baseUrl}}/api/v1/groups
 Authorization: Bearer {{accessToken}}
 

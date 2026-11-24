@@ -53,6 +53,11 @@ class EventCategory protected constructor(
     lateinit var updatedAt: Instant
         protected set
 
+    fun update(name: String, color: String?) {
+        this.name = name.trim()
+        this.color = color
+    }
+
     companion object {
         fun create(
             calendar: Calendar,

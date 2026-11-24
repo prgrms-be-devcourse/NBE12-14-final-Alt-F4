@@ -38,4 +38,7 @@ enum class ErrorCode(
 
     // 캘린더
     CALENDAR_IN_USE_BY_ROOM(HttpStatus.CONFLICT, "조율방에서 쓰는 캘린더는 삭제할 수 없습니다."),
+
+    // 카테고리
+    CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "카테고리를 찾을 수 없습니다."),
 }

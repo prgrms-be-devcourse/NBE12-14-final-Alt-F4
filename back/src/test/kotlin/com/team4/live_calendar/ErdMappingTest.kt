@@ -24,7 +24,7 @@ class ErdMappingTest(
         "calendar_groups" to "id user_id name display_order? is_visible? created_at updated_at",
         "event_options" to "id subscribe_id event_id is_visible created_at updated_at calendar_id",
         "event_categories" to "id calendar_id name color? created_at updated_at",
-        "category_options" to "id subscribe_id category_id calendar_id is_visible created_at updated_at",
+        "category_options" to "id subscribe_id category_id calendar_id is_visible created_at updated_at color?",
         "calendars" to "id name description? color? timezone created_at updated_at",
         "events" to "id calendar_id category_id? user_id uid title description? location? start_at end_at is_all_day timezone rrule? recur_until? created_at updated_at",
         "room_invite_links" to "id room_id token_hash revoked_at? created_at user_id",

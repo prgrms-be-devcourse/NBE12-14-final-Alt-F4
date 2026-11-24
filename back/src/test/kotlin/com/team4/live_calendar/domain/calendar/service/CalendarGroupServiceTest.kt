@@ -7,6 +7,8 @@ import com.team4.live_calendar.domain.calendar.entity.CalendarRole
 import com.team4.live_calendar.domain.calendar.entity.Subscribe
 import com.team4.live_calendar.domain.calendar.repository.CalendarGroupRepository
 import com.team4.live_calendar.domain.calendar.repository.SubscribeRepository
+import com.team4.live_calendar.domain.category.entity.CategoryOption
+import com.team4.live_calendar.domain.category.entity.EventCategory
 import com.team4.live_calendar.domain.user.entity.User
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
@@ -260,11 +262,15 @@ class CalendarGroupServiceTest(
     }
 
     @Test
-    fun `그룹과 캘린더가 많아도 조회 쿼리는 두 번이다`() {
-        // given: 그룹 3개에 캘린더 2개씩
+    fun `그룹과 캘린더와 카테고리가 많아도 조회 쿼리는 세 번이다`() {
+        // given: 그룹 3개에 캘린더 2개씩, 캘린더마다 카테고리 2개씩
         repeat(3) { i ->
             val group = group(me, "그룹 $i", i)
-            repeat(2) { j -> place(me, group, calendar("캘린더 $i-$j"), CalendarRole.OWNER) }
+            repeat(2) { j ->
+                val calendar = calendar("캘린더 $i-$j")
+                place(me, group, calendar, CalendarRole.OWNER)
+                repeat(2) { k -> persist(EventCategory.create(calendar, "카테고리 $i-$j-$k", null)) }
+            }
         }
         // 직접 저장한 엔티티가 영속성 컨텍스트에 남아 있으면 지연 로딩 쿼리가 안 보이므로 비운다
         em.flush()
@@ -278,9 +284,10 @@ class CalendarGroupServiceTest(
             // when
             val result = calendarGroupService.findMyGroups(me.id!!)
 
-            // then: 그룹 한 번, 이용 관계 + 캘린더 한 번
+            // then: 그룹 한 번, 이용 관계 + 캘린더 한 번, 카테고리 한 번
             assertEquals(6, result.sumOf { it.calendars.size })
-            assertEquals(2, statistics.prepareStatementCount)
+            assertEquals(12, result.sumOf { group -> group.calendars.sumOf { it.categories.size } })
+            assertEquals(3, statistics.prepareStatementCount)
         } finally {
             statistics.isStatisticsEnabled = wasEnabled
         }
@@ -330,5 +337,115 @@ class CalendarGroupServiceTest(
 
         // then
         assertEquals(listOf("VIEWER", "EDITOR"), calendars.map { it.role })
+    }
+
+    // ===== 조회: 카테고리 =====
+
+    private fun category(calendar: Calendar, name: String, color: String? = null) =
+        persist(EventCategory.create(calendar, name, color))
+
+    @Test
+    fun `캘린더마다 그 캘린더의 카테고리만 나오고 카테고리가 없는 캘린더는 빈 목록이다`() {
+        // given
+        val group = group(me, "운동", 0)
+        val baseball = calendar("야구")
+        val soccer = calendar("축구")
+        val empty = calendar("농구")
+        place(me, group, baseball, CalendarRole.OWNER)
+        place(me, group, soccer, CalendarRole.OWNER)
+        place(me, group, empty, CalendarRole.OWNER)
+        category(baseball, "경기")
+        category(soccer, "훈련")
+        category(baseball, "응원")
+        em.flush()
+        em.clear()
+
+        // when
+        val calendars = calendarGroupService.findMyGroups(me.id!!).single().calendars
+
+        // then
+        assertEquals(listOf("경기", "응원"), calendars[0].categories.map { it.name })
+        assertEquals(listOf("훈련"), calendars[1].categories.map { it.name })
+        assertTrue(calendars[2].categories.isEmpty())
+    }
+
+    @Test
+    fun `카테고리는 만든 순서(id 순서)로 나온다`() {
+        // given
+        val baseball = calendar("야구")
+        place(me, group(me, "운동", 0), baseball, CalendarRole.OWNER)
+        val first = category(baseball, "하")
+        val second = category(baseball, "가")
+        val third = category(baseball, "나")
+        em.flush()
+        em.clear()
+
+        // when
+        val categories = calendarGroupService.findMyGroups(me.id!!).single().calendars.single().categories
+
+        // then
+        assertEquals(listOf(first.id, second.id, third.id), categories.map { it.id })
+    }
+
+    @Test
+    fun `VIEWER나 SUBSCRIBER로 쓰는 캘린더도 카테고리가 나온다`() {
+        // given
+        val baseball = calendar("야구")
+        val soccer = calendar("축구")
+        place(other, group(other, "게시자 그룹", 0), baseball, CalendarRole.OWNER)
+        val myGroup = group(me, "구독", 0)
+        place(me, myGroup, baseball, CalendarRole.VIEWER)
+        place(me, myGroup, soccer, CalendarRole.SUBSCRIBER)
+        category(baseball, "경기")
+        category(soccer, "훈련")
+
+        // when
+        val calendars = calendarGroupService.findMyGroups(me.id!!).single().calendars
+
+        // then
+        assertEquals(listOf(listOf("경기"), listOf("훈련")), calendars.map { calendar -> calendar.categories.map { it.name } })
+    }
+
+    @Test
+    fun `카테고리 색은 내 이용 관계 색이나 캘린더 색이나 내 카테고리 설정 색이 아니라 카테고리 원본 색이다`() {
+        // given: 네 가지 색을 모두 다르게 넣는다
+        val baseball = calendar("야구", color = "#111111")
+        val subscribe = place(me, group(me, "운동", 0), baseball, CalendarRole.OWNER, color = "#222222")
+        val category = category(baseball, "경기", color = "#333333")
+        persist(CategoryOption.create(subscribe, category, baseball, color = "#444444"))
+        em.flush()
+        em.clear()
+
+        // when
+        val result = calendarGroupService.findMyGroups(me.id!!).single().calendars.single().categories.single()
+
+        // then
+        assertEquals(category.id, result.id)
+        assertEquals("경기", result.name)
+        assertEquals("#333333", result.color)
+    }
+
+    @Test
+    fun `캘린더가 하나도 없으면 카테고리 쿼리를 하지 않아 조회 쿼리는 두 번이다`() {
+        // given: 그룹만 있고 캘린더는 없음
+        group(me, "빈 그룹", 0)
+        group(me, "또 빈 그룹", 1)
+        em.flush()
+        em.clear()
+        val statistics = em.entityManagerFactory.unwrap(SessionFactory::class.java).statistics
+        val wasEnabled = statistics.isStatisticsEnabled
+        statistics.isStatisticsEnabled = true
+        statistics.clear()
+
+        try {
+            // when
+            val result = calendarGroupService.findMyGroups(me.id!!)
+
+            // then: 그룹 한 번, 이용 관계 + 캘린더 한 번
+            assertEquals(2, result.size)
+            assertEquals(2, statistics.prepareStatementCount)
+        } finally {
+            statistics.isStatisticsEnabled = wasEnabled
+        }
     }
 }

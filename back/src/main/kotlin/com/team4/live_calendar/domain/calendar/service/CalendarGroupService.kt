@@ -4,9 +4,11 @@ import com.team4.live_calendar.domain.calendar.dto.CalendarGroupRequest
 import com.team4.live_calendar.domain.calendar.dto.CalendarGroupResponse
 import com.team4.live_calendar.domain.calendar.dto.CalendarGroupWithCalendarsResponse
 import com.team4.live_calendar.domain.calendar.dto.GroupCalendarResponse
+import com.team4.live_calendar.domain.calendar.dto.GroupCategoryResponse
 import com.team4.live_calendar.domain.calendar.entity.CalendarGroup
 import com.team4.live_calendar.domain.calendar.repository.CalendarGroupRepository
 import com.team4.live_calendar.domain.calendar.repository.SubscribeRepository
+import com.team4.live_calendar.domain.category.repository.EventCategoryRepository
 import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
@@ -21,15 +23,27 @@ class CalendarGroupService(
     private val calendarGroupRepository: CalendarGroupRepository,
     private val subscribeRepository: SubscribeRepository,
     private val userRepository: UserRepository,
+    private val eventCategoryRepository: EventCategoryRepository,
 ) {
 
-    // 내 그룹과 그 안의 내 캘린더. 쿼리는 그룹 한 번, 이용 관계 + 캘린더 한 번
+    // 내 그룹과 그 안의 내 캘린더, 캘린더마다 그 캘린더의 카테고리
+    // 쿼리는 그룹 한 번, 이용 관계 + 캘린더 한 번, 카테고리 한 번 (캘린더가 없으면 카테고리 쿼리는 하지 않는다)
     fun findMyGroups(userId: Long): List<CalendarGroupWithCalendarsResponse> {
         val groups = calendarGroupRepository.findAllByUserIdOrdered(userId)
+        val subscribes = subscribeRepository.findAllWithCalendarByUserId(userId)
+        // category.calendar는 위에서 불러 둔 캘린더라, id를 읽어도 쿼리를 더 만들지 않는다
+        val categoriesByCalendarId = if (subscribes.isEmpty()) {
+            emptyMap()
+        } else {
+            eventCategoryRepository.findAllByCalendarIdInOrderByIdAsc(subscribes.map { requireNotNull(it.calendar.id) })
+                .groupBy({ it.calendar.id }, { GroupCategoryResponse.from(it) })
+        }
         // 지연 로딩 프록시의 id(group.id)는 쿼리를 더 만들지 않는다
         // 내 그룹 목록에 없는 그룹을 가리키는 이용 관계는 설계상 생기지 않으며, 생기더라도 응답에서 빠진다
-        val calendarsByGroupId = subscribeRepository.findAllWithCalendarByUserId(userId)
-            .groupBy({ it.group.id }, { GroupCalendarResponse.from(it) })
+        val calendarsByGroupId = subscribes.groupBy(
+            { it.group.id },
+            { GroupCalendarResponse.from(it, categoriesByCalendarId[it.calendar.id].orEmpty()) },
+        )
         return groups.map { CalendarGroupWithCalendarsResponse.from(it, calendarsByGroupId[it.id].orEmpty()) }
     }
 

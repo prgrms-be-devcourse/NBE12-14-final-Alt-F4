@@ -13,4 +13,9 @@ interface CategoryOptionRepository : JpaRepository<CategoryOption, Long> {
     @Modifying
     @Query("delete from CategoryOption o where o.calendar.id = :calendarId")
     fun deleteAllInCalendar(calendarId: Long): Int
+
+    // 카테고리 삭제: 이 카테고리의 사람별 설정 (모든 사람 것)
+    @Modifying
+    @Query("delete from CategoryOption o where o.category.id = :categoryId")
+    fun deleteAllOfCategory(categoryId: Long): Int
 }
