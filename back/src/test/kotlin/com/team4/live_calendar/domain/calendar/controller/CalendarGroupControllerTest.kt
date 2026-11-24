@@ -4,6 +4,7 @@ import com.team4.live_calendar.domain.calendar.entity.Calendar
 import com.team4.live_calendar.domain.calendar.entity.CalendarGroup
 import com.team4.live_calendar.domain.calendar.entity.CalendarRole
 import com.team4.live_calendar.domain.calendar.entity.Subscribe
+import com.team4.live_calendar.domain.category.entity.EventCategory
 import com.team4.live_calendar.domain.user.entity.User
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.BeforeEach
@@ -123,8 +124,32 @@ class CalendarGroupControllerTest(
             jsonPath("$[0].calendars[0].name") { value("야구") }
             jsonPath("$[0].calendars[0].color") { value("#FF0000") }
             jsonPath("$[0].calendars[0].role") { value("OWNER") }
+            jsonPath("$[0].calendars[0].categories.length()") { value(0) }
             jsonPath("$[1].name") { value("빈 그룹") }
             jsonPath("$[1].calendars.length()") { value(0) }
+        }
+    }
+
+    @Test
+    fun `그룹 조회에서 캘린더의 categories를 반환한다`() {
+        // given
+        val sports = persist(CalendarGroup.create(me, "운동", 0))
+        val baseball = persist(Calendar.create("야구", null, "#FF0000"))
+        persist(Subscribe.create(me, sports, baseball, CalendarRole.OWNER, null))
+        val category = persist(EventCategory.create(baseball, "경기", "#4285F4"))
+        persist(EventCategory.create(baseball, "응원", null))
+
+        // when
+        val result = mockMvc.get("/api/v1/groups") { with(loginAs(me)) }
+
+        // then
+        result.andExpect {
+            status { isOk() }
+            jsonPath("$[0].calendars[0].categories.length()") { value(2) }
+            jsonPath("$[0].calendars[0].categories[0].id") { value(category.id!!) }
+            jsonPath("$[0].calendars[0].categories[0].name") { value("경기") }
+            jsonPath("$[0].calendars[0].categories[0].color") { value("#4285F4") }
+            jsonPath("$[0].calendars[0].categories[1].name") { value("응원") }
         }
     }
 
