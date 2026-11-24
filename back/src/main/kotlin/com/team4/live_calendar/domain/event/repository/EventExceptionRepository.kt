@@ -2,6 +2,7 @@ package com.team4.live_calendar.domain.event.repository
 
 import com.team4.live_calendar.domain.event.entity.EventException
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import java.time.Instant
 
@@ -39,4 +40,9 @@ interface EventExceptionRepository : JpaRepository<EventException, Long> {
         """,
     )
     fun findModifiedOverlapping(calendarIds: Collection<Long>, from: Instant, to: Instant): List<EventException>
+
+    // 캘린더 삭제: 이 캘린더 일정의 회차 예외
+    @Modifying
+    @Query("delete from EventException x where x.event.id in (select e.id from Event e where e.calendar.id = :calendarId)")
+    fun deleteAllInCalendar(calendarId: Long): Int
 }
