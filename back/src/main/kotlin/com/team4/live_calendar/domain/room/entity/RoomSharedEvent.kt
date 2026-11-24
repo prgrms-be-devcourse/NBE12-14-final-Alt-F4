@@ -1,18 +1,7 @@
 package com.team4.live_calendar.domain.room.entity
 
 import com.team4.live_calendar.domain.event.entity.Event
-import jakarta.persistence.Column
-import jakarta.persistence.Entity
-import jakarta.persistence.EntityListeners
-import jakarta.persistence.EnumType
-import jakarta.persistence.Enumerated
-import jakarta.persistence.FetchType
-import jakarta.persistence.GeneratedValue
-import jakarta.persistence.GenerationType
-import jakarta.persistence.Id
-import jakarta.persistence.JoinColumn
-import jakarta.persistence.ManyToOne
-import jakarta.persistence.Table
+import jakarta.persistence.*
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
 import org.springframework.data.annotation.CreatedDate
@@ -23,7 +12,13 @@ import java.time.Instant
 // 조율할 때 참고하라고 방에 공유한 내 일정
 @Entity
 @EntityListeners(AuditingEntityListener::class)
-@Table(name = "room_shared_events")
+@Table(
+    name = "room_shared_events",
+    // 같은 참여자가 같은 일정을 두 번 공유하지 않는다
+    uniqueConstraints = [UniqueConstraint(
+        name = "uk_room_shared_events_member_event", columnNames = ["member_id", "event_id"]
+    )],
+)
 class RoomSharedEvent protected constructor(
     member: RoomMember,
     event: Event,

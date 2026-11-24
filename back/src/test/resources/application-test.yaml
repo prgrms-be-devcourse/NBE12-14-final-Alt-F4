@@ -29,6 +29,10 @@ app:
   auth:
     cookie:
       secure: false
+  # 테스트 전용 값
+  sqids:
+    room-alphabet: 9T1CV48Z7FQGS0KY3HMBAJWNXD2PR6E5
+    user-alphabet: D7KS2RHYQ3FEAX1BJGZVT5WMNC694P80
 
 jwt:
   secret: test-only-secret-key-not-for-production-0123456789

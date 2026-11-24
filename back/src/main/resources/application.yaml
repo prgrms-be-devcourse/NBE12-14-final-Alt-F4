@@ -34,3 +34,11 @@ jwt:
   issuer: live-calendar
   access-token-expiry: 30m
   refresh-token-expiry: 14d
+
+app:
+  sqids:
+    # Crockford Base32 32종류 글자(0-9, I·L·O·U를 뺀 A-Z)를 한 번씩 섞은 값. 기본값은 두지 않는다 (jwt.secret과 같은 방식)
+    # 운영 값은 한 번 정하면 바꾸지 않는다. 바꾸면 공유된 방 주소와 회원 태그가 전부 깨진다
+    room-alphabet: ${ROOM_ID_ALPHABET}
+    user-alphabet: ${USER_ID_ALPHABET}
+    min-length: 6

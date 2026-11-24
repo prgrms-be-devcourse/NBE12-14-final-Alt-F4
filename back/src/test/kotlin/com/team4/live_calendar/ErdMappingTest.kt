@@ -32,10 +32,10 @@ class ErdMappingTest(
         "calendar_invitations" to "id calendar_id user_id token_hash role expires_at status created_at",
         "notifications" to "id user_id calendar_id? type params? is_read created_at",
         "room_messages" to "id member_id content created_at",
-        "scheduling_rooms" to "id name start_date end_date daily_start_time daily_end_time timezone created_at updated_at owner_id calendar_id",
+        "scheduling_rooms" to "id name start_date end_date daily_start_time daily_end_time timezone created_at updated_at owner_id calendar_id deleted_at?",
         "share_tag_connection" to "id share_id tag_id created_at",
         "room_invitations" to "id room_id status responded_at? created_at updated_at inviter_id invitee_id",
-        "room_members" to "id room_id joined_at user_id",
+        "room_members" to "id room_id joined_at user_id left_at?",
         "subscribes" to "id user_id group_id calendar_id role color? is_visible created_at updated_at",
         "share_info" to "id user_id title group_name? content? is_public created_at updated_at",
     )
