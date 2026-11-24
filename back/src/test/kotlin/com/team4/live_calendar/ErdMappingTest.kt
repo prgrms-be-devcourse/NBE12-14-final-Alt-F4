@@ -56,4 +56,21 @@ class ErdMappingTest(
         assertEquals(expected.keys, actual.keys, "ERD 테이블 중 엔티티가 없는 테이블이 있습니다")
         expected.forEach { (table, columns) -> assertEquals(columns, actual[table], "$table 컬럼이 ERD와 다릅니다") }
     }
+
+    @Test
+    fun `공유 페이지와 캘린더 조합에 유일 제약이 있다`() {
+        val columns = em.createNativeQuery(
+            """
+            SELECT column_name
+            FROM information_schema.statistics
+            WHERE table_schema = DATABASE()
+              AND table_name = 'share_calendar_connection'
+              AND index_name = 'uk_share_calendar_connection_share_calendar'
+              AND non_unique = 0
+            ORDER BY seq_in_index
+            """.trimIndent(),
+        ).resultList
+
+        assertEquals(listOf("share_id", "calendar_id"), columns)
+    }
 }

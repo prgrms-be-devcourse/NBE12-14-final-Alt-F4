@@ -55,13 +55,29 @@ class ShareControllerTest(
         assertEquals("동아리 공지", share.title)
         assertTrue(share.isPublic)
 
-        val connections = em.createQuery(
-            "select c from ShareCalendarConnection c where c.share.id = :shareId order by c.displayOrder",
-            ShareCalendarConnection::class.java,
-        ).setParameter("shareId", shareId).resultList
+        val connections = findConnections(shareId)
 
         assertEquals(listOf(secondId, firstId), connections.map { it.calendar.id })
         assertEquals(listOf(1, 2), connections.map { it.displayOrder })
+    }
+
+    @Test
+    fun `같은 캘린더를 중복 요청하면 201을 반환하고 한 번만 연결한다`() {
+        val owner = persist(User.signUp("owner@mail.com", "{bcrypt}hash", "소유자"))
+        val calendarId = createOwnedCalendar(owner, "정기 모임")
+
+        val response = postShare(owner, listOf(calendarId, calendarId))
+            .andExpect {
+                status { isCreated() }
+                jsonPath("$.shareId") { exists() }
+            }
+            .andReturn().response
+
+        val shareId = JsonPath.read<Number>(response.contentAsString, "$.shareId").toLong()
+        em.flush()
+        em.clear()
+
+        assertEquals(listOf(calendarId), findConnections(shareId).map { it.calendar.id })
     }
 
     @Test
@@ -80,6 +96,12 @@ class ShareControllerTest(
 
         assertEquals(shareCountBefore, shareInfoRepository.count())
     }
+
+    private fun findConnections(shareId: Long): List<ShareCalendarConnection> =
+        em.createQuery(
+            "select c from ShareCalendarConnection c where c.share.id = :shareId order by c.displayOrder",
+            ShareCalendarConnection::class.java,
+        ).setParameter("shareId", shareId).resultList
 
     private fun postShare(user: User, calendarIds: List<Long>) =
         mockMvc.post("/api/v1/shares") {
