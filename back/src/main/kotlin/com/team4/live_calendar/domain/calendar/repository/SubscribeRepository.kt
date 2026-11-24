@@ -21,6 +21,8 @@ interface SubscribeRepository : JpaRepository<Subscribe, Long> {
 
     fun findByUserIdAndCalendarIdAndRole(userId: Long, calendarId: Long, role: CalendarRole): Subscribe?
 
+    fun countByUserIdAndCalendarIdInAndRole(userId: Long, calendarIds: Collection<Long>, role: CalendarRole): Long
+
     // 캘린더 삭제: 이 캘린더의 이용 관계 전부 (다른 사람 것 포함)
     @Modifying
     @Query("delete from Subscribe s where s.calendar.id = :calendarId")
