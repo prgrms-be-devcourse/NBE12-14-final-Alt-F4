@@ -61,6 +61,39 @@ docker exec -it local-live-calendar mysql -uroot -proot -e "SHOW DATABASES;"
 
 만든 값은 저장소에 커밋하지 않습니다. 각자 컴퓨터에서 한 번만 만들어 두면 됩니다.
 
+## DB 마이그레이션 (Flyway)
+
+테이블은 Hibernate가 아니라 `src/main/resources/db/migration`의 SQL 파일이 만듭니다. 앱이 뜰 때 Flyway가 아직 실행하지 않은 파일을 번호 순서대로 실행하고, Hibernate(`ddl-auto: validate`)는 엔티티와 테이블이 같은지만 확인합니다. 다르면 앱이 시작되지 않습니다.
+
+### 처음 한 번: 로컬 DB 비우기
+
+Flyway 도입 전에 만든 로컬 DB에는 Flyway 기록 테이블(`flyway_schema_history`)이 없어서 앱이 시작되지 않습니다. 한 번만 DB를 지우고 다시 만듭니다. (로컬 데이터는 사라집니다. Grafana·Prometheus는 그대로입니다)
+
+```bash
+docker exec local-live-calendar mysql -uroot -proot -e "DROP DATABASE \`live-calendar-db\`; CREATE DATABASE \`live-calendar-db\`;"
+```
+
+### 규칙
+
+1. **엔티티(테이블·컬럼·제약·인덱스)를 바꾸면 SQL 파일을 같이 올립니다.**
+   - 위치: `src/main/resources/db/migration/`
+   - 이름: `V{번호}__{영문_소문자_설명}.sql` (밑줄 두 개). 예: `V3__add_room_soft_delete.sql`
+2. **이미 develop에 머지된 마이그레이션 파일은 고치지 않습니다.** 고칠 게 있으면 새 번호로 추가합니다. 적용된 파일이 바뀌면 체크섬이 달라져 모두의 앱이 시작되지 않습니다.
+3. **번호는 머지 직전에 develop의 마지막 번호를 보고 정합니다.** 다른 PR과 번호가 겹치면 늦게 머지하는 쪽이 번호를 올립니다. 겹친 채로 올리면 테스트가 실패합니다.
+4. SQL이 맞는지는 `./gradlew test`로 확인합니다. 테스트도 Flyway로 테이블을 만들기 때문에, SQL과 엔티티가 다르면 테스트가 시작할 때 실패합니다.
+   - 단, **UNIQUE 제약과 인덱스는 이 검사에서 빠집니다.** 빠뜨려도 테스트가 통과하니, 엔티티의 `@Table(uniqueConstraints, indexes)`와 SQL의 이름을 직접 맞춰 봅니다. 실제 예: `V2__add_share_public_and_unique.sql`
+
+### 예시: 컬럼 추가
+
+엔티티에 `deletedAt`을 추가했다면 같은 PR에 아래 파일을 넣습니다.
+
+```sql
+-- V3__add_room_soft_delete.sql
+ALTER TABLE scheduling_rooms ADD COLUMN deleted_at DATETIME(6) NULL;
+```
+
+타입이 헷갈리면 `V1__init.sql`에서 같은 종류의 컬럼을 찾아봅니다(`Instant` → `datetime(6)`, `String`(길이 100) → `varchar(100)`).
+
 ## 실행과 확인
 
 ### 애플리케이션 실행
