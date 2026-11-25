@@ -1,0 +1,128 @@
+### 회원가입 성공 (201)
+POST {{baseUrl}}/api/v1/auth/signup
+Content-Type: application/json
+
+{
+  "email": "test@mail.com",
+  "password": "Passw0rd!",
+  "nickname": "test"
+}
+
+### 같은 이메일로 다시 가입 (409 DUPLICATE_EMAIL) — 위 요청을 먼저 실행
+POST {{baseUrl}}/api/v1/auth/signup
+Content-Type: application/json
+
+{
+  "email": "test@mail.com",
+  "password": "Passw0rd!",
+  "nickname": "test2"
+}
+
+### 이메일 형식 오류 (400 INVALID_INPUT)
+POST {{baseUrl}}/api/v1/auth/signup
+Content-Type: application/json
+
+{
+  "email": "not-an-email",
+  "password": "Passw0rd!",
+  "nickname": "test"
+}
+
+### 비밀번호가 짧음 (400 INVALID_INPUT)
+POST {{baseUrl}}/api/v1/auth/signup
+Content-Type: application/json
+
+{
+  "email": "short@mail.com",
+  "password": "Pw0!",
+  "nickname": "test"
+}
+
+### 비밀번호에 한글 포함 (400 INVALID_INPUT)
+POST {{baseUrl}}/api/v1/auth/signup
+Content-Type: application/json
+
+{
+  "email": "korean@mail.com",
+  "password": "비밀번호Pw0!",
+  "nickname": "test"
+}
+
+### 비밀번호에 특수문자 없음 (400 INVALID_INPUT)
+POST {{baseUrl}}/api/v1/auth/signup
+Content-Type: application/json
+
+{
+  "email": "nospecial@mail.com",
+  "password": "Passw0rd1234",
+  "nickname": "test"
+}
+
+### GET은 허용되지 않음 (401)
+GET {{baseUrl}}/api/v1/auth/signup
+
+### 로그인 성공 (200) — 위의 첫 가입 요청을 먼저 실행
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@mail.com",
+  "password": "Passw0rd!"
+}
+
+> {%
+    client.global.set("accessToken", response.body.accessToken);
+%}
+
+### 로그인: 비밀번호가 틀림 (401 INVALID_CREDENTIALS)
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@mail.com",
+  "password": "Wrong1234!"
+}
+
+### 로그인: 가입하지 않은 이메일 (401 INVALID_CREDENTIALS, 위와 같은 응답)
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "none@mail.com",
+  "password": "Passw0rd!"
+}
+
+### 로그인: 이메일 형식 오류 (400 INVALID_INPUT)
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "not-an-email",
+  "password": "Passw0rd!"
+}
+
+### 로그인: 비밀번호가 비어 있음 (400 INVALID_INPUT)
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@mail.com",
+  "password": ""
+}
+
+### 토큰 재발급 (200) — 위의 로그인 성공 요청을 먼저 실행
+POST {{baseUrl}}/api/v1/auth/refresh
+
+> {%
+    client.global.set("accessToken", response.body.accessToken);
+%}
+
+### 쿠키 없이 재발급 (401 INVALID_REFRESH_TOKEN)
+// @no-cookie-jar
+POST {{baseUrl}}/api/v1/auth/refresh
+
+### 로그아웃 (204)
+POST {{baseUrl}}/api/v1/auth/logout
+
+### 로그아웃 후 재발급 (401 INVALID_REFRESH_TOKEN) — 바로 위 로그아웃을 먼저 실행
+POST {{baseUrl}}/api/v1/auth/refresh

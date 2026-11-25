@@ -96,7 +96,7 @@ class AuthControllerSignupTest(
         val result = mockMvc.post("/api/v1/anything")
 
         // then
-        result.andExpect { status { isForbidden() } }
+        result.andExpect { status { isUnauthorized() } }
     }
 
     @Test
@@ -105,7 +105,7 @@ class AuthControllerSignupTest(
         val result = mockMvc.get("/api/v1/auth/signup")
 
         // then
-        result.andExpect { status { isForbidden() } }
+        result.andExpect { status { isUnauthorized() } }
     }
 
     @Test

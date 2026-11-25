@@ -57,6 +57,11 @@ class CalendarGroup protected constructor(
     lateinit var updatedAt: Instant
         protected set
 
+    // 이름만 바꾼다 (순서·표시 여부는 따로)
+    fun rename(name: String) {
+        this.name = name.trim()
+    }
+
     companion object {
         fun create(
             user: User,

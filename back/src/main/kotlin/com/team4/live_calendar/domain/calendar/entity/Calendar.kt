@@ -53,6 +53,19 @@ class Calendar protected constructor(
     lateinit var updatedAt: Instant
         protected set
 
+    // 원본 정보를 바꾼다 (OWNER만, 서비스에서 확인). 시간대는 서비스에서 검증한 값을 받는다
+    fun update(
+        name: String,
+        description: String?,
+        color: String?,
+        timezone: String,
+    ) {
+        this.name = name.trim()
+        this.description = description
+        this.color = color
+        this.timezone = timezone
+    }
+
     companion object {
         const val DEFAULT_TIMEZONE = "UTC"
 

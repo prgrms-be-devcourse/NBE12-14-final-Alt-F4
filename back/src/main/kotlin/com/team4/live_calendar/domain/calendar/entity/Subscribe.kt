@@ -13,6 +13,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
 import org.springframework.data.annotation.CreatedDate
@@ -23,7 +24,15 @@ import java.time.Instant
 // 회원이 캘린더를 이용하는 관계 (소유, 참여, 구독 모두 포함)
 @Entity
 @EntityListeners(AuditingEntityListener::class)
-@Table(name = "subscribes")
+@Table(
+    name = "subscribes",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uk_subscribes_user_calendar",
+            columnNames = ["user_id", "calendar_id"],
+        ),
+    ],
+)
 class Subscribe protected constructor(
     user: User,
     group: CalendarGroup,
@@ -75,6 +84,11 @@ class Subscribe protected constructor(
     @Column(name = "updated_at", nullable = false)
     lateinit var updatedAt: Instant
         protected set
+
+    // 내 화면에서 이 캘린더를 둘 그룹을 바꾼다 (원본·역할·다른 사람의 배치는 그대로)
+    fun moveTo(group: CalendarGroup) {
+        this.group = group
+    }
 
     companion object {
         fun create(

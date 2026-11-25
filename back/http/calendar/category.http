@@ -1,0 +1,70 @@
+# 카테고리 API 요청 예시
+# ※ auth.http의 로그인 성공 요청을 먼저 실행하세요. 받은 accessToken을 Authorization 헤더로 보냅니다.
+# ※ 카테고리는 캘린더에 딸린 원본입니다. 만들기·고치기·지우기는 그 캘린더의 OWNER·EDITOR만 할 수 있습니다 (그 밖은 403).
+# ※ 없는 카테고리는 404 CATEGORY_NOT_FOUND, 남의 캘린더 카테고리는 403입니다 (일정 API와 같음, 남의 그룹이 404인 그룹 API와 다름). 생성에서 없는 캘린더는 404 CALENDAR_NOT_FOUND입니다.
+# ※ 목록 API는 따로 없습니다. GET /api/v1/groups가 캘린더마다 categories로 보여 줍니다.
+# ※ 위에서부터 순서대로 실행하세요. 생성 응답의 id를 categoryCalendarId, categoryId로 저장해 아래 요청에서 씁니다.
+
+### 카테고리를 둘 캘린더 생성 (201)
+POST {{baseUrl}}/api/v1/calendars
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "스터디"
+}
+
+> {%
+    client.global.set("categoryCalendarId", response.body.id);
+%}
+
+### 카테고리 생성 (201) - 본문에 calendarId. 같은 캘린더에 같은 이름도 만들 수 있습니다
+POST {{baseUrl}}/api/v1/categories
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "calendarId": {{categoryCalendarId}},
+  "name": "멘토링",
+  "color": "#4285F4"
+}
+
+> {%
+    client.global.set("categoryId", response.body.id);
+%}
+
+### 그룹 조회 (200) - 스터디 캘린더의 categories에 멘토링이 보입니다 (색은 카테고리 원본 색)
+GET {{baseUrl}}/api/v1/groups
+Authorization: Bearer {{accessToken}}
+
+### 카테고리 수정 (200) - 모든 칸 보내기. 안 보낸 color는 비워집니다
+PATCH {{baseUrl}}/api/v1/categories/{{categoryId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "1:1 멘토링",
+  "color": "#34A853"
+}
+
+### 카테고리 이름이 비어 있음 (400 INVALID_INPUT) - 앞뒤 공백만 있어도, 100자를 넘어도 400
+PATCH {{baseUrl}}/api/v1/categories/{{categoryId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "   "
+}
+
+### 카테고리 삭제 (204) - 이 카테고리를 단 일정은 남고 카테고리 없음(categoryId: null)이 됩니다
+DELETE {{baseUrl}}/api/v1/categories/{{categoryId}}
+Authorization: Bearer {{accessToken}}
+
+### 없는 카테고리 수정 (404 CATEGORY_NOT_FOUND) - 위에서 지운 카테고리. 본문 검사가 먼저라 올바른 본문을 보냅니다
+PATCH {{baseUrl}}/api/v1/categories/{{categoryId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "멘토링"
+}

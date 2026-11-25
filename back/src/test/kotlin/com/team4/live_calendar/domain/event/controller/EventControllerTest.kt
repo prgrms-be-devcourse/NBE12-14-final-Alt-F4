@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
+import kotlin.test.assertNotEquals
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -164,8 +165,8 @@ class EventControllerTest(
             content = timedEventJson()
         }
 
-        // then: 아직 인증 실패 처리기가 없어서 Security가 403으로 막는다 (로그인 구현 후 401로 바뀔 수 있음)
-        result.andExpect { status { isForbidden() } }
+        // then
+        result.andExpect { status { isUnauthorized() } }
     }
 
     // ===== 조회 =====
@@ -272,6 +273,264 @@ class EventControllerTest(
         result.andExpect { status { isNoContent() } }
         mockMvc.get("/api/v1/events/${created.id}") { with(loginAs(owner)) }
             .andExpect { status { isNotFound() } }
+    }
+
+    // ===== 반복 일정 =====
+
+    private fun recurringEventJson(rrule: String) = """
+        {"calendarId": ${calendar.id}, "title": "주간 회의",
+         "startAt": "2026-11-16T08:00:00+09:00", "endAt": "2026-11-16T09:00:00+09:00",
+         "timezone": "Asia/Seoul", "rrule": "$rrule"}
+    """
+
+    private fun createRecurringEvent(): Long {
+        val body = mockMvc.post("/api/v1/events") {
+            with(loginAs(owner))
+            contentType = MediaType.APPLICATION_JSON
+            content = recurringEventJson("FREQ=WEEKLY;BYDAY=MO")
+        }.andReturn().response.contentAsString
+        return Regex(""""id":(\d+)""").find(body)!!.groupValues[1].toLong()
+    }
+
+    @Test
+    fun `반복 일정을 JSON으로 생성하면 정리된 rrule과 occurrenceStart를 반환한다`() {
+        // when
+        val result = mockMvc.post("/api/v1/events") {
+            with(loginAs(owner))
+            contentType = MediaType.APPLICATION_JSON
+            content = recurringEventJson("rrule:byday=MO;freq=weekly")
+        }
+
+        // then
+        result.andExpect {
+            status { isCreated() }
+            jsonPath("$.rrule") { value("FREQ=WEEKLY;BYDAY=MO") }
+            jsonPath("$.timezone") { value("Asia/Seoul") }
+            jsonPath("$.startAt") { value("2026-11-15T23:00:00Z") }
+            jsonPath("$.occurrenceStart") { value("2026-11-15T23:00:00Z") }
+        }
+    }
+
+    @Test
+    fun `잘못된 반복 규칙으로 생성하면 400 INVALID_RECURRENCE`() {
+        // when
+        val result = mockMvc.post("/api/v1/events") {
+            with(loginAs(owner))
+            contentType = MediaType.APPLICATION_JSON
+            content = recurringEventJson("FREQ=HOURLY")
+        }
+
+        // then
+        result.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_RECURRENCE") }
+        }
+    }
+
+    @Test
+    fun `반복 일정을 JSON으로 수정하면 규칙과 시간대가 바뀐다`() {
+        // given
+        val id = createRecurringEvent()
+
+        // when: 뉴욕 시간 화요일 10시 매주
+        val result = mockMvc.patch("/api/v1/events/$id") {
+            with(loginAs(owner))
+            param("scope", "ALL")
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {"title": "주간 회의",
+                 "startAt": "2026-11-17T10:00:00-05:00", "endAt": "2026-11-17T11:00:00-05:00",
+                 "timezone": "America/New_York", "rrule": "FREQ=WEEKLY;BYDAY=TU;COUNT=2"}
+            """
+        }
+
+        // then
+        result.andExpect {
+            status { isOk() }
+            jsonPath("$.rrule") { value("FREQ=WEEKLY;COUNT=2;BYDAY=TU") }
+            jsonPath("$.timezone") { value("America/New_York") }
+            jsonPath("$.startAt") { value("2026-11-17T15:00:00Z") }
+        }
+    }
+
+    @Test
+    fun `기간 조회는 반복 일정을 회차마다 펼쳐 반환한다`() {
+        // given
+        val id = createRecurringEvent()
+
+        // when: 한국 11/16 ~ 11/30 (+09:00은 param으로 넣으면 그대로 전달된다)
+        val result = mockMvc.get("/api/v1/events") {
+            with(loginAs(viewer))
+            param("from", "2026-11-16T00:00:00+09:00")
+            param("to", "2026-11-30T00:00:00+09:00")
+            param("timezone", "Asia/Seoul")
+        }
+
+        // then: 11/16, 11/23 (11/30 08:00은 범위 밖)
+        result.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(2) }
+            jsonPath("$[0].id") { value(id) }
+            jsonPath("$[1].id") { value(id) }
+            jsonPath("$[0].occurrenceStart") { value("2026-11-15T23:00:00Z") }
+            jsonPath("$[1].startAt") { value("2026-11-22T23:00:00Z") }
+            jsonPath("$[1].occurrenceStart") { value("2026-11-22T23:00:00Z") }
+            jsonPath("$[1].endAt") { value("2026-11-23T00:00:00Z") }
+            jsonPath("$[1].rrule") { value("FREQ=WEEKLY;BYDAY=MO") }
+        }
+    }
+
+    @Test
+    fun `반복 일정의 이 일정만 수정하면 바뀐 회차를 반환한다`() {
+        // given: 매주 월요일 한국 08:00
+        val id = createRecurringEvent()
+
+        // when: 11/23 회차만 10시로 (+09:00은 param으로 넣으면 그대로 전달된다)
+        val result = mockMvc.patch("/api/v1/events/$id") {
+            with(loginAs(owner))
+            param("scope", "THIS")
+            param("occurrenceStart", "2026-11-23T08:00:00+09:00")
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {"title": "변경된 회의",
+                 "startAt": "2026-11-23T10:00:00+09:00", "endAt": "2026-11-23T11:00:00+09:00",
+                 "rrule": "FREQ=WEEKLY;BYDAY=MO"}
+            """
+        }
+
+        // then
+        result.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(id) }
+            jsonPath("$.title") { value("변경된 회의") }
+            jsonPath("$.startAt") { value("2026-11-23T01:00:00Z") }
+            jsonPath("$.occurrenceStart") { value("2026-11-22T23:00:00Z") }
+        }
+    }
+
+    @Test
+    fun `반복 일정의 이 일정만 삭제하면 204이고 그 회차만 조회에서 빠진다`() {
+        // given
+        val id = createRecurringEvent()
+
+        // when
+        val result = mockMvc.delete("/api/v1/events/$id") {
+            with(loginAs(owner))
+            param("scope", "THIS")
+            param("occurrenceStart", "2026-11-22T23:00:00Z")
+        }
+
+        // then
+        result.andExpect { status { isNoContent() } }
+        mockMvc.get("/api/v1/events") {
+            with(loginAs(owner))
+            param("from", "2026-11-16T00:00:00+09:00")
+            param("to", "2026-12-01T00:00:00+09:00")
+            param("timezone", "Asia/Seoul")
+        }.andExpect {
+            jsonPath("$.length()") { value(2) }
+            jsonPath("$[1].occurrenceStart") { value("2026-11-29T23:00:00Z") }
+        }
+    }
+
+    @Test
+    fun `반복 일정의 이 일정과 이후 수정하면 새 일정을 반환한다`() {
+        // given: 매주 월요일 한국 08:00
+        val id = createRecurringEvent()
+
+        // when: 12/7 회차부터 10시로
+        val body = mockMvc.patch("/api/v1/events/$id") {
+            with(loginAs(owner))
+            param("scope", "THIS_AND_FOLLOWING")
+            param("occurrenceStart", "2026-12-07T08:00:00+09:00")
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {"title": "새 회의",
+                 "startAt": "2026-12-07T10:00:00+09:00", "endAt": "2026-12-07T11:00:00+09:00",
+                 "timezone": "Asia/Seoul", "rrule": "FREQ=WEEKLY;BYDAY=MO"}
+            """
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.title") { value("새 회의") }
+            jsonPath("$.startAt") { value("2026-12-07T01:00:00Z") }
+        }.andReturn().response.contentAsString
+
+        // then: 새 일정이라 id가 다르다
+        val newId = Regex(""""id":(\d+)""").find(body)!!.groupValues[1].toLong()
+        assertNotEquals(id, newId)
+    }
+
+    @Test
+    fun `이 일정과 이후 수정에서 앞 회차가 끝나기 전에 시작하면 400 INVALID_INPUT`() {
+        // given: 매주 월요일 한국 08:00
+        val id = createRecurringEvent()
+
+        // when: 12/7 회차부터인데 새 시작이 앞 회차(11/30 08:00~09:00) 도중
+        val result = mockMvc.patch("/api/v1/events/$id") {
+            with(loginAs(owner))
+            param("scope", "THIS_AND_FOLLOWING")
+            param("occurrenceStart", "2026-12-07T08:00:00+09:00")
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {"title": "새 회의",
+                 "startAt": "2026-11-30T08:30:00+09:00", "endAt": "2026-11-30T09:30:00+09:00",
+                 "timezone": "Asia/Seoul", "rrule": "FREQ=WEEKLY;BYDAY=MO"}
+            """
+        }
+
+        // then
+        result.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_INPUT") }
+        }
+    }
+
+    @Test
+    fun `반복 일정의 이 일정과 이후 삭제하면 204이다`() {
+        // given
+        val id = createRecurringEvent()
+
+        // when
+        val result = mockMvc.delete("/api/v1/events/$id") {
+            with(loginAs(owner))
+            param("scope", "THIS_AND_FOLLOWING")
+            param("occurrenceStart", "2026-12-06T23:00:00Z")
+        }
+
+        // then
+        result.andExpect { status { isNoContent() } }
+    }
+
+    @Test
+    fun `반복 일정을 scope 없이 삭제하면 400 RECURRENCE_SCOPE_REQUIRED`() {
+        // given
+        val id = createRecurringEvent()
+
+        // when
+        val result = mockMvc.delete("/api/v1/events/$id") { with(loginAs(owner)) }
+
+        // then
+        result.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("RECURRENCE_SCOPE_REQUIRED") }
+        }
+    }
+
+    @Test
+    fun `기간 조회의 timezone이 잘못되면 400 INVALID_INPUT`() {
+        // when
+        val result = mockMvc.get("/api/v1/events") {
+            with(loginAs(owner))
+            param("from", "2026-11-16T00:00:00Z")
+            param("to", "2026-11-17T00:00:00Z")
+            param("timezone", "Mars/Base")
+        }
+
+        // then
+        result.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_INPUT") }
+        }
     }
 
     @Test
