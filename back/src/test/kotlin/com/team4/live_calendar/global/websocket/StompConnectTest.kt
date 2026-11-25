@@ -51,7 +51,7 @@ class StompConnectTest : StompTestSupport() {
         connect(tokenOf(user), handler = handler)
 
         // then
-        assertEquals(user.id.toString(), handler.connectedHeaders?.getFirst("user-name"))
+        assertEquals(user.id.toString(), handler.connected.get(5, TimeUnit.SECONDS).getFirst("user-name"))
     }
 
     @Test
@@ -78,7 +78,7 @@ class StompConnectTest : StompTestSupport() {
         connect(tokenOf(newUser()), handler = handler)
 
         // then
-        assertEquals(listOf(10_000L, 10_000L), handler.connectedHeaders?.heartbeat?.toList())
+        assertEquals(listOf(10_000L, 10_000L), handler.connected.get(5, TimeUnit.SECONDS).heartbeat?.toList())
     }
 
     @Test

@@ -35,6 +35,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.BlockingQueue
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -171,10 +172,11 @@ abstract class StompTestSupport {
     // 연결 응답과 서버의 ERROR 프레임을 기록한다
     protected class RecordingHandler : StompSessionHandlerAdapter() {
         val errorMessages = LinkedBlockingQueue<String>()
-        var connectedHeaders: StompHeaders? = null
+        // Spring은 connect()가 끝났다고 먼저 알린 뒤 afterConnected를 부른다. 그래서 바로 읽지 않고 도착을 기다린다
+        val connected = CompletableFuture<StompHeaders>()
 
         override fun afterConnected(session: StompSession, connectedHeaders: StompHeaders) {
-            this.connectedHeaders = connectedHeaders
+            connected.complete(connectedHeaders)
         }
 
         override fun getPayloadType(headers: StompHeaders): Type = ByteArray::class.java
