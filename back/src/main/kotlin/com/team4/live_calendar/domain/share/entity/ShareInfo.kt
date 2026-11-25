@@ -14,6 +14,7 @@ import jakarta.persistence.Table
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
+import org.hibernate.annotations.ColumnDefault
 import java.time.Instant
 
 // 공유 페이지
@@ -25,6 +26,7 @@ class ShareInfo protected constructor(
     title: String,
     groupName: String?,
     content: String?,
+    isPublic: Boolean,
 ) {
 
     @Id
@@ -59,18 +61,25 @@ class ShareInfo protected constructor(
     lateinit var updatedAt: Instant
         protected set
 
+    @Column(name = "is_public", nullable = false)
+    @ColumnDefault("0")
+    var isPublic: Boolean = isPublic
+        protected set
+
     companion object {
         fun create(
             user: User,
             title: String,
             groupName: String?,
             content: String?,
+            isPublic: Boolean = false,
         ): ShareInfo =
             ShareInfo(
                 user = user,
                 title = title.trim(),
                 groupName = groupName,
                 content = content,
+                isPublic = isPublic,
             )
     }
 }

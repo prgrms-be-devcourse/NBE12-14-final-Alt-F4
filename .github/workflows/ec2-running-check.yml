@@ -1,0 +1,30 @@
+
+name: ec2-running-check
+
+on:
+  pull_request:
+    branches:
+      - release
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  ec2-running-check:
+    name: EC2 Runner Availability Check
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 2
+
+    steps:
+      - name: Check EC2 Runner
+        run: |
+          echo "EC2 Self-hosted Runner is online."
+          echo "Runner name: $RUNNER_NAME"
+          echo "Runner OS: $RUNNER_OS"
+          echo "Runner architecture: $RUNNER_ARCH"
