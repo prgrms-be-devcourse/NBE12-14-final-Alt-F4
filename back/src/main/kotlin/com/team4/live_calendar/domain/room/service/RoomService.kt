@@ -4,6 +4,7 @@ import com.team4.live_calendar.domain.calendar.entity.Calendar
 import com.team4.live_calendar.domain.calendar.repository.CalendarRepository
 import com.team4.live_calendar.domain.room.dto.RoomCreateRequest
 import com.team4.live_calendar.domain.room.dto.RoomDetailResponse
+import com.team4.live_calendar.domain.room.dto.RoomSummaryResponse
 import com.team4.live_calendar.domain.room.entity.SchedulingRoom
 import com.team4.live_calendar.domain.room.repository.RoomMemberRepository
 import com.team4.live_calendar.domain.room.repository.SchedulingRoomRepository
@@ -56,6 +57,15 @@ class RoomService(
         return toDetail(room, userId)
     }
 
+    fun findMine(userId: Long): List<RoomSummaryResponse> =
+        schedulingRoomRepository.findActiveRoomsOf(userId).map { RoomSummaryResponse.from(it, userId, publicIds) }
+
+    // roomId는 방 코드(Sqids)
+    fun get(userId: Long, roomId: String): RoomDetailResponse {
+        val member = roomAccess.currentMember(roomId, userId)
+        return toDetail(member.room, userId)
+    }
+
     private fun toDetail(room: SchedulingRoom, userId: Long): RoomDetailResponse =
         RoomDetailResponse.from(
             room, roomMemberRepository.findActiveMembersWithUser(requireNotNull(room.id)), userId, publicIds,
@@ -75,5 +85,5 @@ class RoomService(
         } catch (e: DateTimeException) {
             throw BusinessException(ErrorCode.INVALID_INPUT, "올바르지 않은 시간대입니다: $timezone")
         }
-    
+
 }
