@@ -1,0 +1,52 @@
+
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and Deploy
+
+    runs-on: [self-hosted, linux, x64]
+
+    steps:
+      - name: Build and Deploy Application
+        run: |
+          set -e
+
+          cd ~/NBE12-14-final-Alt-F4
+
+          git fetch origin release
+
+          BUILD_DIR=$(mktemp -d)
+          trap 'rm -rf "$BUILD_DIR"' EXIT
+
+          git archive origin/release | tar -x -C "$BUILD_DIR"
+
+          docker build \
+            -t live-calendar-backend:latest \
+            "$BUILD_DIR/back"
+
+          docker build \
+            -t live-calendar-frontend:latest \
+            "$BUILD_DIR/front"
+
+          docker compose \
+            --env-file ~/live-calendar-deploy/.env \
+            -f ~/live-calendar-deploy/app-compose.yaml \
+            up -d backend frontend
+
+          echo "Deployment completed successfully"
+
+
+

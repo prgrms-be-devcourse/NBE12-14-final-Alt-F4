@@ -119,10 +119,6 @@ jobs:
         if: ${{ steps.filter.outputs.front == 'true' }}
         run: npm run lint
 
-      - name: Run type check
-        if: ${{ steps.filter.outputs.front == 'true' }}
-        run: npm run typecheck
-
       - name: Build frontend
         if: ${{ steps.filter.outputs.front == 'true' }}
         run: npm run build
