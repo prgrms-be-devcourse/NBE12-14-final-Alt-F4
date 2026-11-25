@@ -7,9 +7,11 @@ import com.team4.live_calendar.domain.calendar.repository.CalendarRepository
 import com.team4.live_calendar.domain.calendar.repository.SubscribeRepository
 import com.team4.live_calendar.domain.category.repository.CategoryOptionRepository
 import com.team4.live_calendar.domain.event.repository.EventOptionRepository
+import com.team4.live_calendar.domain.share.repository.ShareCalendarConnectionRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
-import org.springframework.data.jpa.domain.AbstractPersistable_.id
+import org.hibernate.exception.ConstraintViolationException
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -21,6 +23,7 @@ class SubscribeService(
     private val subscribeRepository: SubscribeRepository,
     private val eventOptionRepository: EventOptionRepository,
     private val categoryOptionRepository: CategoryOptionRepository,
+    private val shareCalendarConnectionRepository: ShareCalendarConnectionRepository,
 ) {
     @Transactional
     fun subscribe(userId: Long, groupId: Long, calendarId: Long): Long {
@@ -41,7 +44,18 @@ class SubscribeService(
             color = null,
         )
 
-        return checkNotNull(subscribeRepository.save(subscription).id)
+        val saved = try {
+            subscribeRepository.saveAndFlush(subscription)
+        } catch (e: DataIntegrityViolationException) {
+            val duplicateRelation = generateSequence<Throwable>(e) { it.cause }
+                .filterIsInstance<ConstraintViolationException>()
+                .any { it.constraintName?.substringAfterLast('.') == "uk_subscribes_user_calendar" }
+            if (duplicateRelation) {
+                throw BusinessException(ErrorCode.CALENDAR_RELATION_ALREADY_EXISTS)
+            }
+            throw e
+        }
+        return checkNotNull(saved.id)
     }
 
     @Transactional
@@ -56,5 +70,27 @@ class SubscribeService(
         eventOptionRepository.deleteAllBySubscribeId(subscriptionId)
         categoryOptionRepository.deleteAllBySubscribeId(subscriptionId)
         subscribeRepository.delete(subscription)
+    }
+
+    @Transactional
+    fun subscribeFromShare(
+        userId: Long,
+        shareId: Long,
+        calendarId: Long,
+        groupId: Long,
+    ): Long {
+        val isPubliclyShared = shareCalendarConnectionRepository.existsPublicShareCalendar(
+            shareId = shareId,
+            calendarId = calendarId,
+        )
+        if (!isPubliclyShared) {
+            throw BusinessException(ErrorCode.PUBLIC_SHARE_CALENDAR_NOT_FOUND)
+        }
+
+        return subscribe(
+            userId = userId,
+            groupId = groupId,
+            calendarId = calendarId,
+        )
     }
 }
