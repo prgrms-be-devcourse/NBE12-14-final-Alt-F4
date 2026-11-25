@@ -7,5 +7,7 @@ data class SubscribeCreateRequest(
     val shareId: Long,
 
     @field:Positive
-    val groupId: Long,
+    val groupId: Long? = null,
+
+    val groupName: String? = null,
 )

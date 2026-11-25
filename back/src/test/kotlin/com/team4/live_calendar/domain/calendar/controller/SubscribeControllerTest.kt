@@ -192,4 +192,76 @@ class SubscribeControllerTest(
         val shareId: Long,
         val calendarId: Long,
     )
+
+    @Test
+    fun `같은 이름의 내 그룹이 있으면 그 그룹에 구독한다`() {
+        val share = createShare(isPublic = true)
+        val group = createSubscriberGroup()
+        val groupId = checkNotNull(group.id)
+
+        val response = mockMvc.post("/api/v1/calendars/${share.calendarId}/subscription") {
+            with(loginAs(group.user))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"shareId": ${share.shareId}, "groupName": "  ${group.name}  "}"""
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.subscriptionId") { exists() }
+        }.andReturn().response
+
+        val subscriptionId = JsonPath.read<Number>(response.contentAsString, "$.subscriptionId").toLong()
+        em.clear()
+
+        val saved = checkNotNull(em.find(Subscribe::class.java, subscriptionId))
+        assertEquals(groupId, saved.group.id)
+    }
+
+    @Test
+    fun `같은 이름의 그룹이 다른 사용자에게만 있으면 내 그룹을 새로 만들어 구독한다`() {
+        val share = createShare(isPublic = true)
+        val groupName = "스터디"
+        val otherUser = persist(User.signUp("other@mail.com", "{bcrypt}hash", "다른 사용자"))
+        persist(CalendarGroup.create(otherUser, groupName, null))
+
+        val subscriber = persist(User.signUp("subscriber@mail.com", "{bcrypt}hash", "구독자"))
+        val subscriberId = checkNotNull(subscriber.id)
+
+        val response = mockMvc.post("/api/v1/calendars/${share.calendarId}/subscription") {
+            with(loginAs(subscriber))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"shareId": ${share.shareId}, "groupName": "$groupName"}"""
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.subscriptionId") { exists() }
+        }.andReturn().response
+
+        val subscriptionId = JsonPath.read<Number>(response.contentAsString, "$.subscriptionId").toLong()
+        em.clear()
+
+        val saved = checkNotNull(em.find(Subscribe::class.java, subscriptionId))
+        assertEquals(groupName, saved.group.name)
+        assertEquals(subscriberId, saved.group.user.id)
+    }
+
+    @Test
+    fun `그룹 ID와 그룹 이름을 둘 다 보내거나 둘 다 생략하면 400을 반환한다`() {
+        val share = createShare(isPublic = true)
+        val group = createSubscriberGroup()
+        val groupId = checkNotNull(group.id)
+
+        val requestBodies = listOf(
+            """{"shareId": ${share.shareId}, "groupId": $groupId, "groupName": "${group.name}"}""",
+            """{"shareId": ${share.shareId}}""",
+        )
+
+        requestBodies.forEach { requestBody ->
+            mockMvc.post("/api/v1/calendars/${share.calendarId}/subscription") {
+                with(loginAs(group.user))
+                contentType = MediaType.APPLICATION_JSON
+                content = requestBody
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("INVALID_INPUT") }
+            }
+        }
+    }
 }
