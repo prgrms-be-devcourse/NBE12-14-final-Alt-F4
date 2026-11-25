@@ -17,7 +17,7 @@ import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
 import java.time.Instant
 
-// 이용자별 카테고리 표시 설정 (calendar는 원본 카테고리와 같은 캘린더인지 검증용)
+// 이용자별 카테고리 설정: 표시 여부, 내 색 (calendar는 원본 카테고리와 같은 캘린더인지 검증용)
 @Entity
 @EntityListeners(AuditingEntityListener::class)
 @Table(name = "category_options")
@@ -26,6 +26,7 @@ class CategoryOption protected constructor(
     category: EventCategory,
     calendar: Calendar,
     isVisible: Boolean,
+    color: String?,
 ) {
 
     @Id
@@ -52,6 +53,11 @@ class CategoryOption protected constructor(
     var isVisible: Boolean = isVisible
         protected set
 
+    // 내 카테고리 색 (CAL-007 표시·숨김 작업에서 쓴다)
+    @Column(name = "color", length = 30)
+    var color: String? = color
+        protected set
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     lateinit var createdAt: Instant
@@ -68,12 +74,14 @@ class CategoryOption protected constructor(
             category: EventCategory,
             calendar: Calendar,
             isVisible: Boolean = true,
+            color: String? = null,
         ): CategoryOption =
             CategoryOption(
                 subscribe = subscribe,
                 category = category,
                 calendar = calendar,
                 isVisible = isVisible,
+                color = color,
             )
     }
 }

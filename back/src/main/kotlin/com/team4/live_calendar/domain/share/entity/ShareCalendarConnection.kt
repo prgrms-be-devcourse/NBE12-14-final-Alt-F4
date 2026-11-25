@@ -11,6 +11,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
 import java.time.Instant
@@ -18,7 +19,15 @@ import java.time.Instant
 // 공유 페이지에 걸린 캘린더
 @Entity
 @EntityListeners(AuditingEntityListener::class)
-@Table(name = "share_calendar_connection")
+@Table(
+    name = "share_calendar_connection",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uk_share_calendar_connection_share_calendar",
+            columnNames = ["share_id", "calendar_id"],
+        ),
+    ],
+)
 class ShareCalendarConnection protected constructor(
     share: ShareInfo,
     calendar: Calendar,

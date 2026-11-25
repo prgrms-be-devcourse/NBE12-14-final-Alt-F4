@@ -1,0 +1,75 @@
+# 캘린더 API 요청 예시
+# ※ auth.http의 로그인 성공 요청을 먼저 실행하세요. 받은 accessToken을 Authorization 헤더로 보냅니다.
+# ※ 캘린더를 만든 사람이 OWNER가 됩니다. 수정·삭제는 OWNER만, 상세 조회와 그룹 이동은 이용 관계가 있는 사람 누구나 할 수 있습니다.
+# ※ 위에서부터 순서대로 실행하세요. 생성 응답의 id를 calendarId로 저장해 아래 요청에서 씁니다.
+# ※ 구독 해지는 같은 경로 아래 DELETE /api/v1/calendars/{calendarId}/subscription 입니다 (구독 담당 API).
+
+### 그룹 없이 캘린더 생성 (201) - 그룹이 하나도 없으면 "내 캘린더" 그룹이 생기고, 있으면 내 첫 그룹에 들어갑니다
+POST {{baseUrl}}/api/v1/calendars
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "야구",
+  "description": "KBO 경기 일정",
+  "color": "#FF0000",
+  "timezone": "Asia/Seoul"
+}
+
+> {%
+    client.global.set("calendarId", response.body.id);
+%}
+
+### 잘못된 시간대 (400 INVALID_INPUT) - 이름이 비었거나 100자를 넘어도 400
+POST {{baseUrl}}/api/v1/calendars
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "축구",
+  "timezone": "Mars/Base"
+}
+
+### 캘린더 상세 (200) - role, groupId는 내 이용 관계의 값
+GET {{baseUrl}}/api/v1/calendars/{{calendarId}}
+Authorization: Bearer {{accessToken}}
+
+### 캘린더 수정 (200) - 모든 칸 보내기. 안 보낸 description, color는 비워지고, timezone만 안 보내면 기존 값 유지
+PATCH {{baseUrl}}/api/v1/calendars/{{calendarId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "프로야구",
+  "color": "#0000FF"
+}
+
+### 옮길 그룹 만들기 (201)
+POST {{baseUrl}}/api/v1/groups
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "스포츠"
+}
+
+> {%
+    client.global.set("moveGroupId", response.body.id);
+%}
+
+### 내 그룹 옮기기 (200) - 내 배치만 바뀌고 다른 사람의 배치는 그대로
+PATCH {{baseUrl}}/api/v1/calendars/{{calendarId}}/group
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "groupId": {{moveGroupId}}
+}
+
+### 캘린더 삭제 (204) - 일정·카테고리·다른 사람의 구독까지 같이 지워집니다. 조율방이 쓰는 캘린더는 409 CALENDAR_IN_USE_BY_ROOM
+DELETE {{baseUrl}}/api/v1/calendars/{{calendarId}}
+Authorization: Bearer {{accessToken}}
+
+### 없는 캘린더 상세 (404 CALENDAR_NOT_FOUND) - 위에서 지운 캘린더
+GET {{baseUrl}}/api/v1/calendars/{{calendarId}}
+Authorization: Bearer {{accessToken}}
