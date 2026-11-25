@@ -23,6 +23,25 @@ interface SubscribeRepository : JpaRepository<Subscribe, Long> {
 
     fun countByUserIdAndCalendarIdInAndRole(userId: Long, calendarIds: Collection<Long>, role: CalendarRole): Long
 
+    @Query(
+        """
+        select g.name
+        from Subscribe s
+        join s.group g
+        where s.calendar.id = :calendarId
+          and s.role = :role
+          and exists (
+              select c.id
+              from ShareCalendarConnection c
+              where c.share.id = :shareId
+                and c.calendar.id = s.calendar.id
+                and c.share.user.id = s.user.id
+                and c.share.isPublic = true
+          )
+        """,
+    )
+    fun findGroupNameForPublicShare(shareId: Long, calendarId: Long, role: CalendarRole): String?
+
     // 캘린더 삭제: 이 캘린더의 이용 관계 전부 (다른 사람 것 포함)
     @Modifying
     @Query("delete from Subscribe s where s.calendar.id = :calendarId")

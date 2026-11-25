@@ -30,23 +30,24 @@ class SubscribeController(
     ): SubscribeCreateResponse {
         val groupId = request.groupId
         val groupName = request.groupName
+        if (groupId != null && groupName != null) {
+            throw BusinessException(ErrorCode.INVALID_INPUT)
+        }
 
-        val subscriptionId = when {
-            groupId != null && groupName == null -> subscribeService.subscribeFromShare(
+        val subscriptionId = if (groupId != null) {
+            subscribeService.subscribeFromShare(
                 userId = userId,
                 shareId = request.shareId,
                 calendarId = calendarId,
                 groupId = groupId,
             )
-
-            groupId == null && groupName != null -> subscribeService.subscribeFromShareByGroupName(
+        } else {
+            subscribeService.subscribeFromShareByGroupName(
                 userId = userId,
                 shareId = request.shareId,
                 calendarId = calendarId,
                 groupName = groupName,
             )
-
-            else -> throw BusinessException(ErrorCode.INVALID_INPUT)
         }
 
         return SubscribeCreateResponse(subscriptionId)

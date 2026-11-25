@@ -95,17 +95,26 @@ class SubscribeService(
         userId: Long,
         shareId: Long,
         calendarId: Long,
-        groupName: String,
+        groupName: String?,
     ): Long {
-        val name = groupName.trim()
-        if (name.isEmpty() || name.length > 100) {
+        val requestedName = groupName?.trim()
+        if (requestedName != null && (requestedName.isEmpty() || requestedName.length > 100)) {
             throw BusinessException(ErrorCode.INVALID_INPUT)
         }
 
         entityManager.find(User::class.java, userId, LockModeType.PESSIMISTIC_WRITE)
             ?: throw BusinessException(ErrorCode.USER_NOT_FOUND)
 
-        checkPublicShareCalendar(shareId, calendarId)
+        val name = if (requestedName == null) {
+            subscribeRepository.findGroupNameForPublicShare(
+                shareId = shareId,
+                calendarId = calendarId,
+                role = CalendarRole.OWNER,
+            ) ?: throw BusinessException(ErrorCode.PUBLIC_SHARE_CALENDAR_NOT_FOUND)
+        } else {
+            checkPublicShareCalendar(shareId, calendarId)
+            requestedName
+        }
 
         val groupId = groupRepository.findFirstByUserIdAndNameOrderByIdAsc(userId, name)?.id
             ?: calendarGroupService.create(userId, CalendarGroupRequest(name = name)).id

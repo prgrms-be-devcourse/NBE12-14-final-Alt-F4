@@ -11,6 +11,8 @@ import com.team4.live_calendar.domain.share.dto.ShareCreateRequest
 import com.team4.live_calendar.domain.user.entity.User
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.mockito.Mockito.doReturn
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -143,6 +145,12 @@ class SubscribeControllerTest(
                 status { isNotFound() }
                 jsonPath("$.code") { value("PUBLIC_SHARE_CALENDAR_NOT_FOUND") }
             }
+
+        postSubscriptionByOriginalGroup(group.user, share)
+            .andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value("PUBLIC_SHARE_CALENDAR_NOT_FOUND") }
+            }
     }
 
     @Test
@@ -173,7 +181,7 @@ class SubscribeControllerTest(
                 isPublic = isPublic,
             ),
         )
-        return ShareFixture(shareId = shareId, calendarId = calendarId)
+        return ShareFixture(shareId = shareId, calendarId = calendarId, ownerGroupName = group.name)
     }
 
     private fun createSubscriberGroup(): CalendarGroup {
@@ -188,9 +196,17 @@ class SubscribeControllerTest(
             content = """{"shareId": $shareId, "groupId": ${checkNotNull(group.id)}}"""
         }
 
+    private fun postSubscriptionByOriginalGroup(user: User, share: ShareFixture) =
+        mockMvc.post("/api/v1/calendars/${share.calendarId}/subscription") {
+            with(loginAs(user))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"shareId": ${share.shareId}}"""
+        }
+
     private data class ShareFixture(
         val shareId: Long,
         val calendarId: Long,
+        val ownerGroupName: String,
     )
 
     @Test
@@ -242,26 +258,46 @@ class SubscribeControllerTest(
         assertEquals(subscriberId, saved.group.user.id)
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun `그룹 지정을 생략하면 원본 그룹명으로 내 그룹에 구독한다`(hasMatchingGroup: Boolean) {
+        val share = createShare(isPublic = true)
+        val subscriber = persist(User.signUp("subscriber@mail.com", "{bcrypt}hash", "구독자"))
+        val subscriberId = checkNotNull(subscriber.id)
+        val matchingGroup = if (hasMatchingGroup) {
+            persist(CalendarGroup.create(subscriber, share.ownerGroupName, null))
+        } else {
+            null
+        }
+
+        val response = postSubscriptionByOriginalGroup(subscriber, share)
+            .andExpect { status { isCreated() } }
+            .andReturn().response
+
+        val subscriptionId = JsonPath.read<Number>(response.contentAsString, "$.subscriptionId").toLong()
+        em.clear()
+
+        val saved = checkNotNull(em.find(Subscribe::class.java, subscriptionId))
+        assertEquals(subscriberId, saved.group.user.id)
+        assertEquals(share.ownerGroupName, saved.group.name)
+        if (matchingGroup != null) {
+            assertEquals(matchingGroup.id, saved.group.id)
+        }
+    }
+
     @Test
-    fun `그룹 ID와 그룹 이름을 둘 다 보내거나 둘 다 생략하면 400을 반환한다`() {
+    fun `그룹 ID와 그룹 이름을 둘 다 보내면 400을 반환한다`() {
         val share = createShare(isPublic = true)
         val group = createSubscriberGroup()
         val groupId = checkNotNull(group.id)
 
-        val requestBodies = listOf(
-            """{"shareId": ${share.shareId}, "groupId": $groupId, "groupName": "${group.name}"}""",
-            """{"shareId": ${share.shareId}}""",
-        )
-
-        requestBodies.forEach { requestBody ->
-            mockMvc.post("/api/v1/calendars/${share.calendarId}/subscription") {
-                with(loginAs(group.user))
-                contentType = MediaType.APPLICATION_JSON
-                content = requestBody
-            }.andExpect {
-                status { isBadRequest() }
-                jsonPath("$.code") { value("INVALID_INPUT") }
-            }
+        mockMvc.post("/api/v1/calendars/${share.calendarId}/subscription") {
+            with(loginAs(group.user))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"shareId": ${share.shareId}, "groupId": $groupId, "groupName": "${group.name}"}"""
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_INPUT") }
         }
     }
 }
