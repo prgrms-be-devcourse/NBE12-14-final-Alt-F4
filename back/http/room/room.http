@@ -1,0 +1,51 @@
+# 조율방 API 요청 예시
+# ※ auth.http의 로그인 성공 요청을 먼저 실행하세요. 받은 accessToken을 Authorization 헤더로 보냅니다.
+# ※ 날짜·시간은 timezone 기준 현지 값입니다. dailyEndTime이 dailyStartTime보다 이르면 다음 날 새벽까지 이어지는 범위입니다(예: 22:00~02:00).
+# ※ groupId는 calendar/group.http의 "그룹 생성"을 먼저 실행해서 저장된 값을 씁니다(공통 캘린더를 넣을 내 그룹).
+# ※ roomId는 숫자가 아니라 방 코드(Crockford Base32 6자 이상, 예: 4XK9TQ)입니다. 소문자로 보내도 됩니다.
+
+### 조율방 생성 (201) - 응답의 id(방 코드)를 roomId로 저장
+POST {{baseUrl}}/api/v1/rooms
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "친구 모임",
+  "startDate": "2026-11-24",
+  "endDate": "2026-11-28",
+  "dailyStartTime": "09:00",
+  "dailyEndTime": "18:00",
+  "timezone": "Asia/Seoul",
+  "groupId": {{groupId}}
+}
+
+> {%
+    client.global.set("roomId", response.body.id);
+%}
+
+### 내 조율방 목록 (200)
+GET {{baseUrl}}/api/v1/rooms
+Authorization: Bearer {{accessToken}}
+
+### 조율방 상세 (200)
+GET {{baseUrl}}/api/v1/rooms/{{roomId}}
+Authorization: Bearer {{accessToken}}
+
+### 못 읽는 방 코드면 404 ROOM_NOT_FOUND (없는 방·참여하지 않은 방도 같은 응답)
+GET {{baseUrl}}/api/v1/rooms/UUUUUU
+Authorization: Bearer {{accessToken}}
+
+### 기간이 거꾸로면 400 INVALID_ROOM_PERIOD
+POST {{baseUrl}}/api/v1/rooms
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "잘못된 방",
+  "startDate": "2026-11-28",
+  "endDate": "2026-11-24",
+  "dailyStartTime": "09:00",
+  "dailyEndTime": "18:00",
+  "timezone": "Asia/Seoul",
+  "groupId": {{groupId}}
+}
