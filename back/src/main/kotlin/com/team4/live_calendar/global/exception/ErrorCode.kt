@@ -42,4 +42,10 @@ enum class ErrorCode(
 
     // 카테고리
     CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "카테고리를 찾을 수 없습니다."),
+
+    // 조율방
+    // 없는 방, 삭제된 방, 참여자가 아닌 방, 나간 방 모두 이 코드 (방이 있는지 알려주지 않는다)
+    ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "조율방을 찾을 수 없습니다."),
+    NOT_ROOM_OWNER(HttpStatus.FORBIDDEN, "방장만 할 수 있습니다."),
+    INVALID_ROOM_PERIOD(HttpStatus.BAD_REQUEST, "조율 기간이나 시간 범위가 올바르지 않습니다."),
 }

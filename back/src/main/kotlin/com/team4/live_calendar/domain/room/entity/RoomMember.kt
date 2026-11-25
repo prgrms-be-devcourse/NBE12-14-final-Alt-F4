@@ -1,27 +1,19 @@
 package com.team4.live_calendar.domain.room.entity
 
 import com.team4.live_calendar.domain.user.entity.User
-import jakarta.persistence.Column
-import jakarta.persistence.Entity
-import jakarta.persistence.EntityListeners
-import jakarta.persistence.FetchType
-import jakarta.persistence.GeneratedValue
-import jakarta.persistence.GenerationType
-import jakarta.persistence.Id
-import jakarta.persistence.JoinColumn
-import jakarta.persistence.ManyToOne
-import jakarta.persistence.Table
-import org.springframework.data.annotation.CreatedDate
-import org.springframework.data.jpa.domain.support.AuditingEntityListener
+import jakarta.persistence.*
 import java.time.Instant
 
-// 조율방 참여 관계
+// 조율방 참여 관계. 나가도 행을 지우지 않는다 (공유 일정·채팅이 이 행을 참조)
 @Entity
-@EntityListeners(AuditingEntityListener::class)
-@Table(name = "room_members")
+@Table(
+    name = "room_members",
+    uniqueConstraints = [UniqueConstraint(name = "uk_room_members_room_user", columnNames = ["room_id", "user_id"])],
+)
 class RoomMember protected constructor(
     room: SchedulingRoom,
     user: User,
+    joinedAt: Instant,
 ) {
 
     @Id
@@ -39,13 +31,27 @@ class RoomMember protected constructor(
     var user: User = user
         protected set
 
-    @CreatedDate
-    @Column(name = "joined_at", nullable = false, updatable = false)
-    lateinit var joinedAt: Instant
+    // 다시 참여하면 바뀌므로 @CreatedDate 대신 직접 넣는다
+    @Column(name = "joined_at", nullable = false)
+    var joinedAt: Instant = joinedAt
         protected set
 
-    companion object {
-        fun create(room: SchedulingRoom, user: User): RoomMember =
-            RoomMember(room = room, user = user)
+    // 비어 있으면 현재 참여자
+    @Column(name = "left_at")
+    var leftAt: Instant? = null
+        protected set
+
+    fun isActive(): Boolean = leftAt == null
+
+    // 나갔던 회원이 다시 참여하면 같은 행을 다시 쓴다
+    fun rejoin(now: Instant) {
+        leftAt = null
+        joinedAt = now
     }
+
+    companion object {
+        fun create(room: SchedulingRoom, user: User, joinedAt: Instant = Instant.now()): RoomMember =
+            RoomMember(room = room, user = user, joinedAt = joinedAt)
+    }
+
 }

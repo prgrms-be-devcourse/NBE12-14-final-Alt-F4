@@ -28,6 +28,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
+    implementation("org.springframework.boot:spring-boot-starter-websocket")
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
@@ -44,9 +45,13 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")
     testImplementation("org.springframework.boot:spring-boot-starter-security-test")
+
     // DB 스키마를 db/migration의 SQL 파일로 관리한다 (MySQL 8은 flyway-mysql이 따로 필요)
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.flywaydb:flyway-mysql")
+
+    // ID 난독화 (조율방 주소, 회원 태그 생성)
+    implementation("org.sqids:sqids:0.1.0")
 }
 
 allOpen {
