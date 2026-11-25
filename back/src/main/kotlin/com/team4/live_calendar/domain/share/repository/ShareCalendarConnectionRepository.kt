@@ -10,17 +10,17 @@ interface ShareCalendarConnectionRepository : JpaRepository<ShareCalendarConnect
 
     @Query(
         """
-        select case when count(c) > 0 then true else false end
-        from ShareCalendarConnection c
-        where c.share.id = :shareId
-          and c.calendar.id = :calendarId
-          and c.share.isPublic = true
-        """,
+    select count(distinct c.calendar.id)
+    from ShareCalendarConnection c
+    where c.share.id = :shareId
+      and c.share.isPublic = true
+      and c.calendar.id in :calendarIds
+    """,
     )
-    fun existsPublicShareCalendar(
+    fun countPublicShareCalendars(
         @Param("shareId") shareId: Long,
-        @Param("calendarId") calendarId: Long,
-    ): Boolean
+        @Param("calendarIds") calendarIds: Collection<Long>,
+    ): Long
 
     // 캘린더 삭제: 이 캘린더의 공유 페이지 연결
     @Modifying

@@ -1,13 +1,12 @@
 package com.team4.live_calendar.domain.calendar.dto
 
+import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.Positive
 
-data class SubscribeCreateRequest(
+data class SubscribeBatchRequest(
     @field:Positive
     val shareId: Long,
 
-    @field:Positive
-    val groupId: Long? = null,
-
-    val groupName: String? = null,
+    @field:NotEmpty
+    val calendarIds: List<Long>,
 )

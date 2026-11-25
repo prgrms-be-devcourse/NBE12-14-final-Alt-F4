@@ -1,6 +1,7 @@
 package com.team4.live_calendar.domain.calendar.service
 
 import com.team4.live_calendar.domain.calendar.dto.CalendarGroupRequest
+import com.team4.live_calendar.domain.calendar.dto.SubscribeBatchRequest
 import com.team4.live_calendar.domain.calendar.entity.CalendarRole
 import com.team4.live_calendar.domain.calendar.entity.Subscribe
 import com.team4.live_calendar.domain.calendar.repository.CalendarGroupRepository
@@ -80,51 +81,38 @@ class SubscribeService(
     }
 
     @Transactional
-    fun subscribeFromShare(
+    fun subscribeBatchFromShare(
         userId: Long,
-        shareId: Long,
-        calendarId: Long,
-        groupId: Long,
-    ): Long {
-        checkPublicShareCalendar(shareId, calendarId)
-        return subscribe(userId = userId, groupId = groupId, calendarId = calendarId)
-    }
+        groupName: String,
+        request: SubscribeBatchRequest,
+    ): List<Long> {
+        val name = groupName.trim()
+        val calendarIds = request.calendarIds.distinct()
 
-    @Transactional
-    fun subscribeFromShareByGroupName(
-        userId: Long,
-        shareId: Long,
-        calendarId: Long,
-        groupName: String?,
-    ): Long {
-        val requestedName = groupName?.trim()
-        if (requestedName != null && (requestedName.isEmpty() || requestedName.length > 100)) {
+        if (name.isEmpty() || groupName.length > 100) {
+            throw BusinessException(ErrorCode.INVALID_INPUT)
+        }
+
+        if (request.shareId <= 0 || calendarIds.isEmpty() || calendarIds.any { it <= 0 }) {
             throw BusinessException(ErrorCode.INVALID_INPUT)
         }
 
         entityManager.find(User::class.java, userId, LockModeType.PESSIMISTIC_WRITE)
             ?: throw BusinessException(ErrorCode.USER_NOT_FOUND)
 
-        val name = if (requestedName == null) {
-            subscribeRepository.findGroupNameForPublicShare(
-                shareId = shareId,
-                calendarId = calendarId,
-                role = CalendarRole.OWNER,
-            ) ?: throw BusinessException(ErrorCode.PUBLIC_SHARE_CALENDAR_NOT_FOUND)
-        } else {
-            checkPublicShareCalendar(shareId, calendarId)
-            requestedName
+        val sharedCalendarCount = shareCalendarConnectionRepository.countPublicShareCalendars(
+            shareId = request.shareId,
+            calendarIds = calendarIds,
+        )
+        if (sharedCalendarCount != calendarIds.size.toLong()) {
+            throw BusinessException(ErrorCode.PUBLIC_SHARE_CALENDAR_NOT_FOUND)
         }
 
         val groupId = groupRepository.findFirstByUserIdAndNameOrderByIdAsc(userId, name)?.id
             ?: calendarGroupService.create(userId, CalendarGroupRequest(name = name)).id
 
-        return subscribe(userId = userId, groupId = groupId, calendarId = calendarId)
-    }
-
-    private fun checkPublicShareCalendar(shareId: Long, calendarId: Long) {
-        if (!shareCalendarConnectionRepository.existsPublicShareCalendar(shareId, calendarId)) {
-            throw BusinessException(ErrorCode.PUBLIC_SHARE_CALENDAR_NOT_FOUND)
+        return calendarIds.map { calendarId ->
+            subscribe(userId = userId, groupId = groupId, calendarId = calendarId)
         }
     }
 }
