@@ -26,12 +26,13 @@ jobs:
 
           cd ~/NBE12-14-final-Alt-F4
 
-          git fetch origin release
+          set -euo pipefail
 
+          git fetch origin release
           BUILD_DIR=$(mktemp -d)
           trap 'rm -rf "$BUILD_DIR"' EXIT
 
-          git archive origin/release | tar -x -C "$BUILD_DIR"
+          git archive FETCH_HEAD | tar -x -C "$BUILD_DIR"
 
           docker build \
             -t live-calendar-backend:latest \
