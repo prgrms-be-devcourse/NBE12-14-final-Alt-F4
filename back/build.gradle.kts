@@ -44,6 +44,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")
     testImplementation("org.springframework.boot:spring-boot-starter-security-test")
+    // DB 스키마를 db/migration의 SQL 파일로 관리한다 (MySQL 8은 flyway-mysql이 따로 필요)
+    implementation("org.springframework.boot:spring-boot-starter-flyway")
+    implementation("org.flywaydb:flyway-mysql")
 }
 
 allOpen {
