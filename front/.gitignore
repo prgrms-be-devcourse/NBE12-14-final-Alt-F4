@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# 빌드할 때 박히는 공개 값(API 주소)만 커밋한다. 비밀 값은 넣지 않는다
+!.env.development
+!.env.production
 
 # vercel
 .vercel
