@@ -103,7 +103,7 @@ class EventService(
     fun findHidden(userId: Long): List<EventResponse> =
         eventOptionRepository.findHiddenEventsOfUser(userId).map(EventResponse::from)
 
-    // [from, to) 기간과 겹치는 일정. 내가 이용하는 캘린더만, 내가 숨긴 일정은 제외
+    // [from, to) 기간과 겹치는 일정. 내가 이용하는 캘린더만, 내가 숨긴 캘린더·일정은 제외
     // 종일 일정은 보는 사람 시간대(viewTimezone, 없으면 UTC)의 날짜로 비교한다
     // 반복 일정은 기간 안의 회차마다 하나씩 (같은 id, 회차의 시간). 지운 회차는 빼고, 바뀐 회차는 바뀐 내용으로
     fun findInRange(
@@ -122,6 +122,8 @@ class EventService(
 
         val subscribes = subscribeRepository.findAllByUserId(userId)
             .filter { calendarIds == null || it.calendar.id in calendarIds }
+            // 숨긴 캘린더는 calendarIds로 직접 골라도 뺀다
+            .filter { it.isVisible }
         if (subscribes.isEmpty()) return emptyList()
 
         val hiddenEventIds = eventOptionRepository.findHiddenEventIds(subscribes.map { it.idOrThrow() }).toSet()

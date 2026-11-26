@@ -1,9 +1,11 @@
 package com.team4.live_calendar.domain.event.service
 
+import com.team4.live_calendar.domain.calendar.dto.CalendarDisplayRequest
 import com.team4.live_calendar.domain.calendar.entity.Calendar
 import com.team4.live_calendar.domain.calendar.entity.CalendarGroup
 import com.team4.live_calendar.domain.calendar.entity.CalendarRole
 import com.team4.live_calendar.domain.calendar.entity.Subscribe
+import com.team4.live_calendar.domain.calendar.service.CalendarService
 import com.team4.live_calendar.domain.event.entity.Event
 import com.team4.live_calendar.domain.event.entity.EventException
 import com.team4.live_calendar.domain.event.entity.EventExceptionType
@@ -35,6 +37,7 @@ import kotlin.test.assertTrue
 @Transactional
 class EventHiddenServiceTest(
     @Autowired private val eventService: EventService,
+    @Autowired private val calendarService: CalendarService,
     @Autowired private val em: EntityManager,
 ) {
 
@@ -261,6 +264,20 @@ class EventHiddenServiceTest(
         assertEquals(listOf(series.id, later.id), result.map { it.id })
         assertEquals(Instant.parse("2026-11-16T01:00:00Z"), result.first().startAt)
         assertEquals("FREQ=DAILY;COUNT=5", result.first().rrule)
+    }
+
+    @Test
+    fun `숨긴 캘린더의 숨긴 일정도 숨긴 목록에 나온다`() {
+        // given
+        val event = event("숨긴 일정", "2026-11-18T05:00:00Z", "2026-11-18T06:00:00Z")
+        eventService.hide(owner.id!!, event.id!!)
+        calendarService.changeDisplay(owner.id!!, calendar.id!!, CalendarDisplayRequest(isVisible = false))
+
+        // when
+        val result = eventService.findHidden(owner.id!!)
+
+        // then
+        assertEquals(listOf(event.id), result.map { it.id })
     }
 
     // ===== 조율방 =====

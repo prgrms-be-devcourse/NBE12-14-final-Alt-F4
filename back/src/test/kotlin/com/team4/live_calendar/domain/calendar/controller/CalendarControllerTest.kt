@@ -341,4 +341,110 @@ class CalendarControllerTest(
             jsonPath("$.code") { value("UNAUTHORIZED") }
         }
     }
+
+    // ===== 내 화면 표시 설정 =====
+
+    @Test
+    fun `표시 설정을 바꾸면 204이고 그룹 조회에 내 표시 여부와 내 색이 나온다`() {
+        // given
+        val calendar = myCalendar()
+
+        // when
+        val result = mockMvc.patch("/api/v1/calendars/${calendar.id}/display") {
+            with(loginAs(me))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"isVisible": false, "color": "#00FF00"}"""
+        }
+
+        // then
+        result.andExpect { status { isNoContent() } }
+        mockMvc.get("/api/v1/groups") { with(loginAs(me)) }.andExpect {
+            jsonPath("$[0].calendars[0].isVisible") { value(false) }
+            jsonPath("$[0].calendars[0].myColor") { value("#00FF00") }
+            jsonPath("$[0].calendars[0].color") { value("#00FF00") }
+        }
+    }
+
+    @Test
+    fun `표시 설정에 isVisible이 없으면 400 INVALID_INPUT`() {
+        // given
+        val calendar = myCalendar()
+
+        // when
+        val result = mockMvc.patch("/api/v1/calendars/${calendar.id}/display") {
+            with(loginAs(me))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"color": "#00FF00"}"""
+        }
+
+        // then
+        result.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_INPUT") }
+            jsonPath("$.errors[0].field") { value("isVisible") }
+        }
+    }
+
+    @Test
+    fun `표시 설정의 color가 30자를 넘으면 400 INVALID_INPUT`() {
+        // given
+        val calendar = myCalendar()
+
+        // when
+        val result = mockMvc.patch("/api/v1/calendars/${calendar.id}/display") {
+            with(loginAs(me))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"isVisible": true, "color": "${"a".repeat(31)}"}"""
+        }
+
+        // then
+        result.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_INPUT") }
+            jsonPath("$.errors[0].field") { value("color") }
+        }
+    }
+
+    @Test
+    fun `없는 캘린더의 표시 설정은 404이고 이용하지 않는 캘린더는 403이다`() {
+        // given
+        val calendar = myCalendar()
+
+        // when
+        val notFound = mockMvc.patch("/api/v1/calendars/-1/display") {
+            with(loginAs(me))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"isVisible": false}"""
+        }
+        val forbidden = mockMvc.patch("/api/v1/calendars/${calendar.id}/display") {
+            with(loginAs(other))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"isVisible": false}"""
+        }
+
+        // then
+        notFound.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("CALENDAR_NOT_FOUND") }
+        }
+        forbidden.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("FORBIDDEN") }
+        }
+    }
+
+    @Test
+    fun `로그인하지 않으면 표시 설정을 바꿀 수 없다`() {
+        // given
+        val calendar = myCalendar()
+
+        // when & then
+        mockMvc.patch("/api/v1/calendars/${calendar.id}/display") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"isVisible": false}"""
+        }.andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value("UNAUTHORIZED") }
+        }
+    }
 }

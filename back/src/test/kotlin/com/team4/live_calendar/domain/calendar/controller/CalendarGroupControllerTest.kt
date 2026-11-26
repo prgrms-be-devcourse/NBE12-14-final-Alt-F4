@@ -247,4 +247,25 @@ class CalendarGroupControllerTest(
             jsonPath("$.code") { value("GROUP_NOT_FOUND") }
         }
     }
+
+    // ===== 내 화면 표시 칸 =====
+
+    @Test
+    fun `그룹 조회의 캘린더에 isVisible과 myColor 칸이 그 이름 그대로 나온다`() {
+        // given
+        val calendar = persist(Calendar.create("야구", null, "#FF0000", "Asia/Seoul"))
+        val subscribe = persist(Subscribe.create(me, persist(CalendarGroup.create(me, "운동", 0)), calendar, CalendarRole.OWNER, null))
+        subscribe.changeDisplay(false, "#00FF00")
+
+        // when
+        val result = mockMvc.get("/api/v1/groups") { with(loginAs(me)) }
+
+        // then
+        result.andExpect {
+            status { isOk() }
+            jsonPath("$[0].calendars[0].isVisible") { value(false) }
+            jsonPath("$[0].calendars[0].myColor") { value("#00FF00") }
+            jsonPath("$[0].calendars[0].visible") { doesNotExist() }
+        }
+    }
 }
