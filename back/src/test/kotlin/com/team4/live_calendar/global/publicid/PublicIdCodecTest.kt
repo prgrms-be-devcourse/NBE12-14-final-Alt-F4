@@ -2,6 +2,9 @@ package com.team4.live_calendar.global.publicid
 
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.mockito.Mockito.mockConstruction
+import org.mockito.Mockito.`when`
+import org.sqids.Sqids
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -9,7 +12,8 @@ import kotlin.test.assertTrue
 // 스프링 없이 인코더만 본다. 알파벳은 테스트 안에서 고정한다
 class PublicIdCodecTest {
 
-    private val codec = PublicIdCodec("9T1CV48Z7FQGS0KY3HMBAJWNXD2PR6E5", minLength = 6)
+    private val alphabet = "9T1CV48Z7FQGS0KY3HMBAJWNXD2PR6E5"
+    private val codec = PublicIdCodec(alphabet, minLength = 6)
 
     @Test
     fun `인코딩한 코드는 Crockford 글자로 6자 이상이고 다시 같은 id로 읽힌다`() {
@@ -56,12 +60,28 @@ class PublicIdCodecTest {
     @Test
     fun `숫자 여러 개가 든 코드는 null`() {
         // given: 우리 API는 id 하나만 쓴다
-        val multi = org.sqids.Sqids.builder()
-            .alphabet("9T1CV48Z7FQGS0KY3HMBAJWNXD2PR6E5").minLength(6).build()
+        val multi = Sqids.builder()
+            .alphabet(alphabet).minLength(6).build()
             .encode(listOf(1L, 2L))
 
         // when & then
         assertNull(codec.decode(multi))
+    }
+
+    @Test
+    fun `Sqids가 음수 ID를 반환하면 재인코딩하지 않고 null을 반환한다`() {
+        val code = codec.encode(1L)
+        val decodedId = Long.MIN_VALUE
+
+        mockConstruction(Sqids::class.java) { sqids, _ ->
+            `when`(sqids.decode(code)).thenReturn(listOf(decodedId))
+            `when`(sqids.encode(listOf(decodedId)))
+                .thenThrow(IllegalArgumentException("음수 ID는 인코딩할 수 없습니다."))
+        }.use {
+            val codecWithInvalidDecode = PublicIdCodec(alphabet, minLength = 6)
+
+            assertNull(codecWithInvalidDecode.decode(code))
+        }
     }
 
     @Test

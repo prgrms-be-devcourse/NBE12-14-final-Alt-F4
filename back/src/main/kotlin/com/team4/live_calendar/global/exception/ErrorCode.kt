@@ -28,6 +28,9 @@ enum class ErrorCode(
     RECURRENCE_SCOPE_REQUIRED(HttpStatus.BAD_REQUEST, "반복 일정은 수정·삭제 범위(scope)를 지정해야 합니다."),
     OCCURRENCE_NOT_FOUND(HttpStatus.NOT_FOUND, "반복 일정의 해당 회차를 찾을 수 없습니다."),
 
+    // 공유
+    SHARE_NOT_FOUND(HttpStatus.NOT_FOUND, "공유 항목을 찾을 수 없습니다."),
+
     // 구독
     CALENDAR_RELATION_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 이용 중인 캘린더입니다."),
     SUBSCRIPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "해지할 구독을 찾을 수 없습니다."),

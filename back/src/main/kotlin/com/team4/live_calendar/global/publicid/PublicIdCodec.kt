@@ -25,11 +25,12 @@ class PublicIdCodec(alphabet: String, private val minLength: Int) {
     fun decode(code: String): Long? {
         val normalized = normalize(code)
         if (normalized.length < minLength) return null
-        // 아주 긴 문자열은 Long 범위를 넘어 예외가 날 수 있어서 못 읽는 코드로 본다
         val ids = runCatching { sqids.decode(normalized) }.getOrNull() ?: return null
-        if (ids.size != 1) return null
+        val id = ids.singleOrNull() ?: return null
+        // Long 범위를 넘는 코드는 디코딩 결과가 음수가 될 수 있고, Sqids는 음수를 인코딩할 수 없다
+        if (id < 0L) return null
         // 같은 숫자로 읽히는 다른 문자열이 있다. 다시 만들어서 같을 때만 인정한다 (Sqids 공식 권장)
-        return ids[0].takeIf { encode(it) == normalized }
+        return id.takeIf { encode(it) == normalized }
     }
 
     companion object {
