@@ -91,6 +91,67 @@ class AuthControllerSignupTest(
     }
 
     @Test
+    fun `닉네임에 한글·영문·숫자 외의 문자가 있으면 400 INVALID_INPUT`() {
+        // given: #, 공백, 특수문자, 이모지, 한글 자모
+        val nicknames = listOf("모임#방장", "모임 방장", "방장!", "방장😀", "ㅋㅋ방장")
+
+        nicknames.forEach { nickname ->
+            // when
+            val result = signup("first@mail.com", nickname = nickname)
+
+            // then
+            result.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("INVALID_INPUT") }
+                jsonPath("$.errors[0].field") { value("nickname") }
+            }
+        }
+    }
+
+    @Test
+    fun `닉네임이 2자보다 짧거나 20자보다 길면 400 INVALID_INPUT`() {
+        // given: 1자, 21자
+        val nicknames = listOf("가", "가".repeat(21))
+
+        nicknames.forEach { nickname ->
+            // when
+            val result = signup("first@mail.com", nickname = nickname)
+
+            // then
+            result.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.errors[0].field") { value("nickname") }
+            }
+        }
+    }
+
+    @Test
+    fun `닉네임은 한글·영문·숫자를 섞어 2자부터 20자까지 쓸 수 있다`() {
+        // given: 2자, 섞은 것, 20자
+        val nicknames = listOf("방장", "Room1방장", "가".repeat(20))
+
+        nicknames.forEachIndexed { i, nickname ->
+            // when
+            val result = signup("ok$i@mail.com", nickname = nickname)
+
+            // then
+            result.andExpect { status { isCreated() } }
+        }
+    }
+
+    @Test
+    fun `같은 닉네임으로도 가입할 수 있다`() {
+        // given
+        signup("first@mail.com", nickname = "모임방장")
+
+        // when
+        val result = signup("second@mail.com", nickname = "모임방장")
+
+        // then
+        result.andExpect { status { isCreated() } }
+    }
+
+    @Test
     fun `인증 없이 보호된 API를 호출하면 거부된다`() {
         // when
         val result = mockMvc.post("/api/v1/anything")
