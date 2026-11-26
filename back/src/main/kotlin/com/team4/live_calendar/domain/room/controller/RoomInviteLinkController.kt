@@ -1,6 +1,9 @@
 package com.team4.live_calendar.domain.room.controller
 
 import com.team4.live_calendar.domain.room.dto.InviteLinkResponse
+import com.team4.live_calendar.domain.room.dto.InvitePreviewResponse
+import com.team4.live_calendar.domain.room.dto.RoomJoinRequest
+import com.team4.live_calendar.domain.room.dto.RoomJoinResponse
 import com.team4.live_calendar.domain.room.service.RoomInviteLinkService
 import com.team4.live_calendar.global.security.CurrentUserId
 import org.springframework.http.HttpStatus
@@ -26,4 +29,19 @@ class RoomInviteLinkController(
         @CurrentUserId userId: Long,
         @PathVariable roomId: String,
     ) = roomInviteLinkService.revoke(userId, roomId)
+
+    // 로그인한 회원만 확인할 수 있다 (SecurityConfig의 anyRequest authenticated)
+    @GetMapping("/invite-links/{token}")
+    fun preview(
+        @CurrentUserId userId: Long,
+        @PathVariable token: String,
+    ): InvitePreviewResponse = roomInviteLinkService.preview(userId, token)
+
+    @PostMapping("/invite-links/{token}/accept")
+    fun accept(
+        @CurrentUserId userId: Long,
+        @PathVariable token: String,
+        @RequestBody request: RoomJoinRequest,
+    ): RoomJoinResponse = roomInviteLinkService.accept(userId, token, request)
+
 }
