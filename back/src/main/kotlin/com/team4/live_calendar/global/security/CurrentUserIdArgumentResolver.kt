@@ -17,7 +17,7 @@ class CurrentUserIdArgumentResolver : HandlerMethodArgumentResolver {
     override fun supportsParameter(parameter: MethodParameter): Boolean =
         parameter.hasParameterAnnotation(CurrentUserId::class.java)
 
-    // TODO 로그인 구현 후 맞출 것: 지금은 Authentication.name을 회원 ID로 가정한다
+    // JWT의 sub(회원 ID)이 Authentication.name으로 들어온다 (JwtTokenProvider가 sub에 회원 ID를 넣는다)
     override fun resolveArgument(
         parameter: MethodParameter,
         mavContainer: ModelAndViewContainer?,
