@@ -4,11 +4,12 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.Size
 
-data class SubscribeBatchRequest(
-    @field:NotBlank
-    @field:Size(max = 100)
-    val groupName: String,
-
+class SubscribeBatchRequest(
+    groupName: String,
     @field:NotEmpty
     val calendarIds: List<Long>,
-)
+) {
+    @field:NotBlank
+    @field:Size(max = 100)
+    val groupName: String = groupName.trim()
+}

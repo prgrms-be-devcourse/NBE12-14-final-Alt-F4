@@ -86,14 +86,10 @@ class SubscribeService(
         shareId: Long,
         request: SubscribeBatchRequest,
     ): List<Long> {
-        val groupName = request.groupName.trim()
+        val groupName = request.groupName
         val calendarIds = request.calendarIds.distinct()
 
-        if (groupName.isEmpty() || request.groupName.length > 100) {
-            throw BusinessException(ErrorCode.INVALID_INPUT)
-        }
-
-        if (shareId <= 0 || calendarIds.isEmpty() || calendarIds.any { it <= 0 }) {
+        if (shareId <= 0 || calendarIds.any { it <= 0 }) {
             throw BusinessException(ErrorCode.INVALID_INPUT)
         }
 

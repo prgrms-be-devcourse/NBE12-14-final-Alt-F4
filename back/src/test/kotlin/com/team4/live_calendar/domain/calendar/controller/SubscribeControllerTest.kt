@@ -23,6 +23,7 @@ import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.post
 import org.springframework.http.MediaType
 import org.springframework.transaction.annotation.Transactional
+import kotlin.test.assertEquals
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -115,6 +116,33 @@ class SubscribeControllerTest(
             }
     }
 
+    @Test
+    fun `그룹명의 앞뒤 공백을 제거한 길이가 100자면 일괄 구독한다`() {
+        val share = createShare(isPublic = true)
+        val group = createSubscriberGroup()
+        val groupName = "가".repeat(100)
+
+        postBatchSubscription(group, share.shareId, share.calendarId, groupName = "  $groupName  ")
+            .andExpect { status { isCreated() } }
+
+        val subscription = subscribeRepository.findByUserIdAndCalendarId(checkNotNull(group.user.id), share.calendarId)
+        assertEquals(groupName, subscription?.group?.name)
+    }
+
+    @Test
+    fun `그룹명의 앞뒤 공백을 제거한 길이가 100자를 넘으면 400을 반환한다`() {
+        val share = createShare(isPublic = true)
+        val group = createSubscriberGroup()
+        val groupName = "가".repeat(101)
+
+        postBatchSubscription(group, share.shareId, share.calendarId, groupName = "  $groupName  ")
+            .andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("INVALID_INPUT") }
+                jsonPath("$.errors[0].field") { value("groupName") }
+            }
+    }
+
     private fun createShare(isPublic: Boolean): ShareFixture {
         val owner = persist(User.signUp("publisher@mail.com", "{bcrypt}hash", "공유자"))
         val group = persist(CalendarGroup.create(owner, "소유자 그룹", null))
@@ -138,11 +166,16 @@ class SubscribeControllerTest(
         return persist(CalendarGroup.create(subscriber, "내 구독 그룹", null))
     }
 
-    private fun postBatchSubscription(group: CalendarGroup, shareId: Long, calendarId: Long) =
+    private fun postBatchSubscription(
+        group: CalendarGroup,
+        shareId: Long,
+        calendarId: Long,
+        groupName: String = group.name,
+    ) =
         mockMvc.post("/api/v1/shares/{shareId}/subscriptions", shareId) {
             with(loginAs(group.user))
             contentType = MediaType.APPLICATION_JSON
-            content = """{"groupName": "${group.name}", "calendarIds": [$calendarId]}"""
+            content = """{"groupName": "$groupName", "calendarIds": [$calendarId]}"""
         }
 
     private data class ShareFixture(
