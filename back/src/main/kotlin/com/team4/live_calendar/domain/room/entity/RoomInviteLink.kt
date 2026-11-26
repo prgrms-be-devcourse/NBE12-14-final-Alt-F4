@@ -48,6 +48,11 @@ class RoomInviteLink protected constructor(
     lateinit var createdAt: Instant
         protected set
 
+    // 폐기한 링크는 지우지 않고 시각만 남긴다 (누가 언제 만든 링크였는지 기록)
+    fun revoke(now: Instant) {
+        if (revokedAt == null) revokedAt = now
+    }
+    
     companion object {
         fun create(room: SchedulingRoom, user: User, tokenHash: String): RoomInviteLink =
             RoomInviteLink(room = room, user = user, tokenHash = tokenHash)
