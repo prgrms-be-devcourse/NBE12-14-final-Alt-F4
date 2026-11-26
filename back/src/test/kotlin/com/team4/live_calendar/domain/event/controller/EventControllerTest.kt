@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 import kotlin.test.assertNotEquals
@@ -546,5 +547,80 @@ class EventControllerTest(
             status { isForbidden() }
             jsonPath("$.code") { value("FORBIDDEN") }
         }
+    }
+
+    // ===== 숨김·복원·숨긴 목록 =====
+
+    @Test
+    fun `일정을 숨기면 204이고 숨긴 목록에 나오며 복원하면 204이고 목록에서 빠진다`() {
+        // given
+        val created = createEvent()
+
+        // when
+        val hide = mockMvc.put("/api/v1/events/${created.id}/hidden") { with(loginAs(viewer)) }
+        val listAfterHide = mockMvc.get("/api/v1/events/hidden") { with(loginAs(viewer)) }
+        val show = mockMvc.delete("/api/v1/events/${created.id}/hidden") { with(loginAs(viewer)) }
+        val listAfterShow = mockMvc.get("/api/v1/events/hidden") { with(loginAs(viewer)) }
+
+        // then
+        hide.andExpect { status { isNoContent() } }
+        listAfterHide.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].id") { value(created.id) }
+        }
+        show.andExpect { status { isNoContent() } }
+        listAfterShow.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(0) }
+        }
+    }
+
+    @Test
+    fun `없는 일정을 숨기거나 복원하면 404 EVENT_NOT_FOUND`() {
+        // when
+        val hide = mockMvc.put("/api/v1/events/-1/hidden") { with(loginAs(owner)) }
+        val show = mockMvc.delete("/api/v1/events/-1/hidden") { with(loginAs(owner)) }
+
+        // then
+        listOf(hide, show).forEach {
+            it.andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value("EVENT_NOT_FOUND") }
+            }
+        }
+    }
+
+    @Test
+    fun `이용하지 않는 캘린더의 일정을 숨기거나 복원하면 403`() {
+        // given
+        val created = createEvent()
+        val stranger = persist(User.signUp("stranger@mail.com", "{bcrypt}hash", "남"))
+
+        // when
+        val hide = mockMvc.put("/api/v1/events/${created.id}/hidden") { with(loginAs(stranger)) }
+        val show = mockMvc.delete("/api/v1/events/${created.id}/hidden") { with(loginAs(stranger)) }
+
+        // then
+        listOf(hide, show).forEach {
+            it.andExpect {
+                status { isForbidden() }
+                jsonPath("$.code") { value("FORBIDDEN") }
+            }
+        }
+    }
+
+    @Test
+    fun `로그인하지 않으면 숨김 API를 호출할 수 없다`() {
+        // given
+        val created = createEvent()
+
+        // when & then
+        mockMvc.put("/api/v1/events/${created.id}/hidden").andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value("UNAUTHORIZED") }
+        }
+        mockMvc.delete("/api/v1/events/${created.id}/hidden").andExpect { status { isUnauthorized() } }
+        mockMvc.get("/api/v1/events/hidden").andExpect { status { isUnauthorized() } }
     }
 }

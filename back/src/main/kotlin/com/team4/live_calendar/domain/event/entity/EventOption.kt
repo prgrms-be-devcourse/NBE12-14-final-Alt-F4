@@ -71,6 +71,11 @@ class EventOption protected constructor(
     lateinit var updatedAt: Instant
         protected set
 
+    // 내 화면에서 숨긴다 (줄이 보임으로 남아 있던 경우. 지금은 그런 줄을 만드는 곳이 없다)
+    fun hide() {
+        isVisible = false
+    }
+
     companion object {
         fun create(
             subscribe: Subscribe,

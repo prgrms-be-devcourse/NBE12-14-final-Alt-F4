@@ -28,6 +28,7 @@ import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import java.time.DateTimeException
 import java.time.Duration
@@ -70,6 +71,38 @@ class EventService(
         return EventResponse.from(event)
     }
 
+    // 내 화면에서만 숨긴다 (원본과 다른 사람 화면은 그대로). 반복 일정은 시리즈 전체. 이미 숨겼으면 그대로
+    // 내 이용 관계 줄을 잠가 같은 사람의 동시 요청을 차례로 처리한다
+    // READ_COMMITTED: 잠금을 얻은 뒤의 조회가 앞 요청이 방금 저장한 줄을 보도록 (MySQL 기본 REPEATABLE READ면 못 봐서 중복 저장)
+    // 다른 트랜잭션 안에서 부르지 않는다 (격리 수준이 무시된다)
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    fun hide(userId: Long, eventId: Long) {
+        val event = findEvent(eventId)
+        val subscribe = subscribeRepository.findForUpdate(userId, event.calendar.idOrThrow())
+            ?: throw BusinessException(ErrorCode.FORBIDDEN)
+        val option = eventOptionRepository.findBySubscribeIdAndEventId(subscribe.idOrThrow(), requireNotNull(event.id))
+        if (option != null) {
+            option.hide()
+        } else {
+            eventOptionRepository.save(EventOption.create(subscribe, event, event.calendar, isVisible = false))
+        }
+    }
+
+    // 숨긴 일정을 다시 보이게 한다: 내 줄만 지운다 (다른 사람의 숨김은 그대로). 숨긴 적 없어도 그대로
+    // 벌크 delete라 잠금이 없어도 결과는 맞지만, 숨김과 같은 차례로 처리되도록 같은 모양으로 둔다
+    // 다른 트랜잭션 안에서 부르지 않는다 (격리 수준이 무시된다)
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    fun show(userId: Long, eventId: Long) {
+        val event = findEvent(eventId)
+        val subscribe = subscribeRepository.findForUpdate(userId, event.calendar.idOrThrow())
+            ?: throw BusinessException(ErrorCode.FORBIDDEN)
+        eventOptionRepository.deleteOfSubscribe(subscribe.idOrThrow(), requireNotNull(event.id))
+    }
+
+    // 내가 숨긴 일정 목록 (숨긴 캘린더의 일정 포함). 반복 일정은 회차로 펼치지 않고 시리즈 값 그대로
+    fun findHidden(userId: Long): List<EventResponse> =
+        eventOptionRepository.findHiddenEventsOfUser(userId).map(EventResponse::from)
+
     // [from, to) 기간과 겹치는 일정. 내가 이용하는 캘린더만, 내가 숨긴 일정은 제외
     // 종일 일정은 보는 사람 시간대(viewTimezone, 없으면 UTC)의 날짜로 비교한다
     // 반복 일정은 기간 안의 회차마다 하나씩 (같은 id, 회차의 시간). 지운 회차는 빼고, 바뀐 회차는 바뀐 내용으로
@@ -92,17 +125,19 @@ class EventService(
         if (subscribes.isEmpty()) return emptyList()
 
         val hiddenEventIds = eventOptionRepository.findHiddenEventIds(subscribes.map { it.idOrThrow() }).toSet()
+        // 내 화면에 보이는 일정인지: 숨긴 일정이 아니어야 한다
+        val visible = { event: Event -> event.id !in hiddenEventIds }
         val subscribedCalendarIds = subscribes.map { it.calendar.idOrThrow() }
         // 종일 일정은 보는 사람 시간대에 따라 하루까지 차이 나므로 DB에서는 앞뒤 하루씩 넉넉하게 가져와 거른다
         val dbFrom = fromInstant.minus(DB_MARGIN)
         val dbTo = toInstant.plus(DB_MARGIN)
 
         val singles = eventRepository.findSingleOverlapping(subscribedCalendarIds, dbFrom, dbTo)
-            .filter { it.id !in hiddenEventIds }
+            .filter(visible)
             .filter { range.overlaps(it.startAt, it.endAt, it.isAllDay) }
             .map(EventResponse::from)
         val expanded = eventRepository.findRecurringCandidates(subscribedCalendarIds, dbFrom, dbTo)
-            .filter { it.id !in hiddenEventIds }
+            .filter(visible)
             .map { it to RecurrenceExpander.expand(it, range) }
         // 예외(지움·바뀜)가 있는 회차는 펼친 결과에서 뺀다. 바뀐 회차는 아래에서 바뀐 시간으로 다시 넣는다
         // 예외는 펼친 회차 시작 범위 안의 것만 가져온다 (오래된 반복 일정의 지난 예외까지 읽지 않도록)
@@ -124,7 +159,7 @@ class EventService(
         val modified = eventExceptionRepository.findModifiedOverlapping(subscribedCalendarIds, dbFrom, dbTo)
             .sortedBy { it.id }
             .distinctBy { it.event.id to it.recurrenceId }
-            .filter { it.event.id !in hiddenEventIds }
+            .filter { visible(it.event) }
             .filter { range.overlaps(requireNotNull(it.startAt), requireNotNull(it.endAt), it.event.isAllDay) }
             .map { EventResponse.from(it.event, it) }
         return (singles + occurrences + modified).sortedWith(compareBy({ it.startAt }, { it.id }))

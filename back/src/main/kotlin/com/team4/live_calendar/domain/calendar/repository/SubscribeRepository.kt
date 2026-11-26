@@ -2,13 +2,20 @@ package com.team4.live_calendar.domain.calendar.repository
 
 import com.team4.live_calendar.domain.calendar.entity.CalendarRole
 import com.team4.live_calendar.domain.calendar.entity.Subscribe
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 
 interface SubscribeRepository : JpaRepository<Subscribe, Long> {
 
     fun findByUserIdAndCalendarId(userId: Long, calendarId: Long): Subscribe?
+
+    // 표시 설정 바꾸기: 같은 사람의 동시 요청을 차례로 처리한다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from Subscribe s where s.user.id = :userId and s.calendar.id = :calendarId")
+    fun findForUpdate(userId: Long, calendarId: Long): Subscribe?
 
     fun findAllByUserId(userId: Long): List<Subscribe>
 
