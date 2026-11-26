@@ -1,7 +1,7 @@
+
 package com.team4.live_calendar.domain.notification.entity
 
 import com.team4.live_calendar.domain.calendar.entity.Calendar
-import com.team4.live_calendar.domain.event.entity.Event
 import com.team4.live_calendar.domain.user.entity.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -26,7 +26,7 @@ import java.time.Instant
 @Table(name = "event_histories")
 class EventHistory protected constructor(
     calendar: Calendar,
-    event: Event,
+    eventId: Long,
     actor: User,
     targetType: EventHistoryTargetType,
     recurrenceId: Instant?,
@@ -46,9 +46,8 @@ class EventHistory protected constructor(
     var calendar: Calendar = calendar
         protected set
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "event_id", nullable = false, updatable = false)
-    var event: Event = event
+    @Column(name = "event_id", nullable = false, updatable = false)
+    var eventId: Long = eventId
         protected set
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -94,7 +93,7 @@ class EventHistory protected constructor(
     companion object {
         fun create(
             calendar: Calendar,
-            event: Event,
+            eventId: Long,
             actor: User,
             targetType: EventHistoryTargetType,
             recurrenceId: Instant? = null,
@@ -104,15 +103,15 @@ class EventHistory protected constructor(
             afterData: Map<String, Any?>? = null,
         ): EventHistory =
             EventHistory(
-                calendar = calendar,
-                event = event,
-                actor = actor,
-                targetType = targetType,
-                recurrenceId = recurrenceId,
-                actionType = actionType,
-                eventTitle = eventTitle,
-                beforeData = beforeData,
-                afterData = afterData,
+                calendar,
+                eventId,
+                actor,
+                targetType,
+                recurrenceId,
+                actionType,
+                eventTitle,
+                beforeData,
+                afterData,
             )
     }
 }

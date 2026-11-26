@@ -22,6 +22,7 @@ import com.team4.live_calendar.domain.event.recurrence.ViewRange
 import com.team4.live_calendar.domain.event.repository.EventExceptionRepository
 import com.team4.live_calendar.domain.event.repository.EventOptionRepository
 import com.team4.live_calendar.domain.event.repository.EventRepository
+import com.team4.live_calendar.domain.notification.service.EventHistoryService
 import com.team4.live_calendar.domain.room.entity.RoomSharedEvent
 import com.team4.live_calendar.domain.room.repository.RoomSharedEventRepository
 import com.team4.live_calendar.domain.user.repository.UserRepository
@@ -51,6 +52,7 @@ class EventService(
     private val categoryOptionRepository: CategoryOptionRepository,
     private val eventExceptionRepository: EventExceptionRepository,
     private val roomSharedEventRepository: RoomSharedEventRepository,
+    private val eventHistoryService: EventHistoryService,
 ) {
 
     @Transactional
@@ -64,7 +66,11 @@ class EventService(
             request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate,
             givenTimezone(request.timezone), request.rrule,
         )
-        return EventResponse.from(eventRepository.saveAndFlush(event))
+        val savedEvent = eventRepository.saveAndFlush(event)
+
+        eventHistoryService.recordCreated(event = savedEvent, actorId = userId,)
+
+        return EventResponse.from(savedEvent)
     }
 
     fun get(userId: Long, eventId: Long): EventResponse {
@@ -187,7 +193,7 @@ class EventService(
         // 반복 없는 일정은 scope 없이 아래 기존 흐름. 반복 일정은 범위를 빠짐없이 나눈다 (값이 늘면 컴파일러가 알려준다)
         if (wasRecurring) {
             when (requireScope(scope)) {
-                RecurrenceScope.THIS -> return updateOccurrence(event, request, occurrenceStart)
+                RecurrenceScope.THIS -> return updateOccurrence(userId, event, request, occurrenceStart)
                 RecurrenceScope.THIS_AND_FOLLOWING -> {
                     val (recurrenceId, _) = findOccurrence(event, occurrenceStart)
                     // 첫 회차에서 고르면 나눌 앞부분이 없어 전체 수정과 같다
@@ -196,6 +202,8 @@ class EventService(
                 RecurrenceScope.ALL -> Unit
             }
         }
+
+        val beforeData = eventHistoryService.captureSnapshot(event)
 
         // 전체 수정에서 회차 일정(시간·규칙·종일·시간대)이 바뀌면 기존 예외는 원래 회차와 맞지 않아 지운다
         val scheduleBefore = event.schedule()
@@ -219,7 +227,12 @@ class EventService(
         if (wasRecurring && event.schedule() != scheduleBefore) {
             eventExceptionRepository.deleteAllByEventId(eventId)
         }
-        return EventResponse.from(eventRepository.saveAndFlush(event))
+
+        val savedEvent = eventRepository.saveAndFlush(event)
+
+        eventHistoryService.recordUpdated(savedEvent, userId, beforeData)
+
+        return EventResponse.from(savedEvent)
     }
 
     // 반복 일정은 scope가 필요하다. THIS면 그 회차만, THIS_AND_FOLLOWING이면 그 회차부터, ALL이면 지난 회차까지 모두 삭제한다
@@ -231,14 +244,17 @@ class EventService(
         if (event.rrule != null) {
             when (requireScope(scope)) {
                 RecurrenceScope.THIS -> {
-                    deleteOccurrence(event, occurrenceStart)
+                    deleteOccurrence(userId, event, occurrenceStart)
                     return
                 }
                 RecurrenceScope.THIS_AND_FOLLOWING -> {
                     val (recurrenceId, _) = findOccurrence(event, occurrenceStart)
                     // 첫 회차에서 고르면 나눌 앞부분이 없어 전체 삭제와 같다. 아니면 그 회차 전에 반복을 끝낸다
                     if (recurrenceId != event.startAt) {
+                        val beforeData = eventHistoryService.captureSnapshot(event)
                         endRecurrenceBefore(event, recurrenceId, truncatedRecurrence(event, recurrenceId))
+                        val savedEvent = eventRepository.saveAndFlush(event)
+                        eventHistoryService.recordUpdated(savedEvent, userId, beforeData, recurrenceId)
                         return
                     }
                 }
@@ -246,15 +262,21 @@ class EventService(
             }
         }
 
+        val beforeData = eventHistoryService.captureSnapshot(event)
+
         // 일정을 참조하는 데이터를 먼저 지운다 (FK)
         eventOptionRepository.deleteAllByEventId(eventId)
         eventExceptionRepository.deleteAllByEventId(eventId)
         roomSharedEventRepository.deleteAllByEventId(eventId)
+
+        // 실제 일정 삭제 전에 이력을 저장한다
+        eventHistoryService.recordDeleted(event, userId, beforeData,)
+
         eventRepository.delete(event)
     }
 
     // 이 회차만 수정: 제목·설명·장소·시간만 바꿀 수 있다 (event_exceptions에 종일 여부·카테고리 칸이 없음)
-    private fun updateOccurrence(event: Event, request: EventUpdateRequest, occurrenceStart: OffsetDateTime?): EventResponse {
+    private fun updateOccurrence(userId: Long, event: Event, request: EventUpdateRequest, occurrenceStart: OffsetDateTime?): EventResponse {
         val (recurrenceId, exception) = findOccurrence(event, occurrenceStart)
         if (request.isAllDay != event.isAllDay) {
             throw BusinessException(ErrorCode.INVALID_INPUT, "이 일정만 수정할 때는 종일 여부를 바꿀 수 없습니다.")
@@ -263,6 +285,8 @@ class EventService(
             throw BusinessException(ErrorCode.INVALID_INPUT, "이 일정만 수정할 때는 카테고리를 바꿀 수 없습니다.")
         }
         val (startAt, endAt) = toPeriod(request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate)
+
+        val beforeData = eventHistoryService.captureOccurrenceSnapshot(event, recurrenceId, exception)
 
         // 같은 회차를 다시 고치면 새 줄을 만들지 않고 기존 예외를 고친다
         val modified = exception?.apply { modify(request.title, request.description, request.location, startAt, endAt) }
@@ -279,13 +303,19 @@ class EventService(
                 ),
             )
         // 바로 반영해서 응답의 updatedAt이 이번 수정 시각이 되게 한다
-        return EventResponse.from(event, eventExceptionRepository.saveAndFlush(modified))
+        val savedException = eventExceptionRepository.saveAndFlush(modified)
+
+        eventHistoryService.recordOccurrenceUpdated(event, userId, recurrenceId, beforeData, savedException)
+
+        return EventResponse.from(event, savedException)
     }
 
     // 이 일정과 이후 수정: 원래 반복은 고른 회차 전에 끝내고, 고른 회차부터는 요청 내용으로 새 일정을 만든다
     // 순서: 새 일정 검증 → 자를 규칙 계산 → 새 일정 시작 검사 → 원래 반복 자르기 → 새 일정 저장
     // 검증이나 검사에 걸리면 원래 일정은 바뀌지 않는다
     private fun updateFollowing(userId: Long, event: Event, request: EventUpdateRequest, recurrenceId: Instant): EventResponse {
+        val beforeData = eventHistoryService.captureSnapshot(event)
+
         // 시간대를 보내지 않으면 원래 일정의 시간대 (원래 일정이 반복 시간 일정일 때만, 1차 수정 규칙과 같음)
         val timezone = givenTimezone(request.timezone) ?: event.timezone.takeIf { !event.isAllDay }
         val newEvent = buildEvent(
@@ -296,9 +326,15 @@ class EventService(
         val truncated = truncatedRecurrence(event, recurrenceId)
         checkStartsAfter(event, truncated, recurrenceId, newEvent, request.startAt, timezone)
         endRecurrenceBefore(event, recurrenceId, truncated)
-        val saved = eventRepository.saveAndFlush(newEvent)
-        copyHiddenAndShares(event, saved)
-        return EventResponse.from(saved)
+        val savedOriginal = eventRepository.saveAndFlush(event)
+        val savedNewEvent = eventRepository.saveAndFlush(newEvent)
+        copyHiddenAndShares(event, savedNewEvent)
+
+        eventHistoryService.recordUpdated(savedOriginal, userId, beforeData, recurrenceId)
+
+        eventHistoryService.recordCreated(savedNewEvent, userId)
+
+        return EventResponse.from(savedNewEvent)
     }
 
     // 이 일정과 이후: 원래 반복을 recurrenceId 회차 바로 전에 끝낸 규칙과 마지막 회차의 끝 (계산만, 원래 일정은 바꾸지 않는다)
@@ -357,13 +393,19 @@ class EventService(
     }
 
     // 이 회차만 삭제: 수정했던 회차면 DELETED로 바꾼다
-    private fun deleteOccurrence(event: Event, occurrenceStart: OffsetDateTime?) {
+    private fun deleteOccurrence(userId: Long, event: Event, occurrenceStart: OffsetDateTime?) {
         val (recurrenceId, exception) = findOccurrence(event, occurrenceStart)
+
+        val beforeData = eventHistoryService.captureOccurrenceSnapshot(event, recurrenceId, exception)
+
         if (exception != null) {
             exception.markDeleted()
+            eventExceptionRepository.saveAndFlush(exception)
         } else {
-            eventExceptionRepository.save(EventException.create(event, recurrenceId, EventExceptionType.DELETED))
+            eventExceptionRepository.saveAndFlush(EventException.create(event, recurrenceId, EventExceptionType.DELETED),)
         }
+
+        eventHistoryService.recordOccurrenceDeleted(event, userId, recurrenceId, beforeData)
     }
 
     // 이 일정만 수정·삭제할 회차와 그 회차의 예외. 실제 회차가 아니거나 이미 지운 회차면 404
