@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 import org.springframework.transaction.annotation.Transactional
 import kotlin.test.assertNull
 
@@ -329,5 +330,68 @@ class CategoryControllerTest(
             status { isUnauthorized() }
             jsonPath("$.code") { value("UNAUTHORIZED") }
         }
+    }
+
+    // ===== 내 화면 숨김·복원 =====
+
+    @Test
+    fun `보기 권한도 카테고리를 숨기고 복원하면 204다`() {
+        // given
+        val category = myCategory()
+        join(other, category.calendar, CalendarRole.VIEWER)
+
+        // when
+        val hide = mockMvc.put("/api/v1/categories/${category.id}/hidden") { with(loginAs(other)) }
+        val show = mockMvc.delete("/api/v1/categories/${category.id}/hidden") { with(loginAs(other)) }
+
+        // then
+        hide.andExpect { status { isNoContent() } }
+        show.andExpect { status { isNoContent() } }
+    }
+
+    @Test
+    fun `없는 카테고리를 숨기거나 복원하면 404 CATEGORY_NOT_FOUND`() {
+        // when
+        val hide = mockMvc.put("/api/v1/categories/-1/hidden") { with(loginAs(me)) }
+        val show = mockMvc.delete("/api/v1/categories/-1/hidden") { with(loginAs(me)) }
+
+        // then
+        listOf(hide, show).forEach {
+            it.andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value("CATEGORY_NOT_FOUND") }
+            }
+        }
+    }
+
+    @Test
+    fun `이용하지 않는 캘린더의 카테고리를 숨기거나 복원하면 403`() {
+        // given
+        val category = myCategory()
+
+        // when
+        val hide = mockMvc.put("/api/v1/categories/${category.id}/hidden") { with(loginAs(other)) }
+        val show = mockMvc.delete("/api/v1/categories/${category.id}/hidden") { with(loginAs(other)) }
+
+        // then
+        listOf(hide, show).forEach {
+            it.andExpect {
+                status { isForbidden() }
+                jsonPath("$.code") { value("FORBIDDEN") }
+            }
+        }
+    }
+
+    @Test
+    fun `로그인하지 않으면 카테고리 숨김 API를 호출할 수 없다`() {
+        // given
+        val category = myCategory()
+
+        // when & then
+        mockMvc.put("/api/v1/categories/${category.id}/hidden").andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value("UNAUTHORIZED") }
+        }
+        mockMvc.delete("/api/v1/categories/${category.id}/hidden").andExpect { status { isUnauthorized() } }
     }
 }

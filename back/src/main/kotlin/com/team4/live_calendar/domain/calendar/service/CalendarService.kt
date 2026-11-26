@@ -1,6 +1,7 @@
 package com.team4.live_calendar.domain.calendar.service
 
 import com.team4.live_calendar.domain.calendar.dto.CalendarCreateRequest
+import com.team4.live_calendar.domain.calendar.dto.CalendarDisplayRequest
 import com.team4.live_calendar.domain.calendar.dto.CalendarGroupMoveRequest
 import com.team4.live_calendar.domain.calendar.dto.CalendarResponse
 import com.team4.live_calendar.domain.calendar.dto.CalendarUpdateRequest
@@ -30,8 +31,8 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.DateTimeException
 import java.time.ZoneId
 
-// 원본 캘린더 생성·상세·수정·삭제와 내 그룹 옮기기
-// 누가 캘린더를 어떻게 쓰는지(역할, 내 그룹)는 이용 관계(subscribes)에 있다
+// 원본 캘린더 생성·상세·수정·삭제와 내 그룹 옮기기, 내 화면 표시 설정(표시 여부·내 색)
+// 누가 캘린더를 어떻게 쓰는지(역할, 내 그룹, 표시 여부, 내 색)는 이용 관계(subscribes)에 있다
 // 권한 검사와 시간대 검증은 일정 API(EventService)와 같은 규칙이다. 일정 파일을 건드리지 않으려고 여기에 따로 둔다
 @Service
 @Transactional(readOnly = true)
@@ -95,6 +96,14 @@ class CalendarService(
         val subscribe = findMySubscribe(userId, findCalendar(calendarId))
         subscribe.moveTo(findMyGroup(userId, requireNotNull(request.groupId)))
         return CalendarResponse.from(subscribe)
+    }
+
+    // 내 화면에서 이 캘린더를 보일지와 내 색 (모든 칸 보내기, color가 null이면 원본 색)
+    // 역할과 상관없이 이용 관계가 있으면 바꿀 수 있다. 원본과 다른 사람의 화면은 그대로
+    @Transactional
+    fun changeDisplay(userId: Long, calendarId: Long, request: CalendarDisplayRequest) {
+        val subscribe = findMySubscribe(userId, findCalendar(calendarId))
+        subscribe.changeDisplay(requireNotNull(request.isVisible), request.color)
     }
 
     // OWNER만. 캘린더와 연결 데이터를 FK 순서대로 모두 지운다 (다른 사람의 이용 관계·구독 포함)

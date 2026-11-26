@@ -1,6 +1,7 @@
 package com.team4.live_calendar.domain.calendar.controller
 
 import com.team4.live_calendar.domain.calendar.dto.CalendarCreateRequest
+import com.team4.live_calendar.domain.calendar.dto.CalendarDisplayRequest
 import com.team4.live_calendar.domain.calendar.dto.CalendarGroupMoveRequest
 import com.team4.live_calendar.domain.calendar.dto.CalendarResponse
 import com.team4.live_calendar.domain.calendar.dto.CalendarUpdateRequest
@@ -61,4 +62,13 @@ class CalendarController(
         @PathVariable id: Long,
         @Valid @RequestBody request: CalendarGroupMoveRequest,
     ): CalendarResponse = calendarService.moveGroup(userId, id, request)
+
+    // 내 화면 표시 여부와 내 색 (모든 칸 보내기, color가 null이면 원본 색)
+    @PatchMapping("/{id}/display")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun changeDisplay(
+        @CurrentUserId userId: Long,
+        @PathVariable id: Long,
+        @Valid @RequestBody request: CalendarDisplayRequest,
+    ) = calendarService.changeDisplay(userId, id, request)
 }

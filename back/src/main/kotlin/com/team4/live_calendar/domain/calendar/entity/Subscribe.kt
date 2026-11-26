@@ -90,6 +90,13 @@ class Subscribe protected constructor(
         this.group = group
     }
 
+    // 내 화면 표시 여부와 내 색 (color가 null이면 원본 색으로 보인다)
+    // 저장 때 모든 칸을 UPDATE하므로, 같은 사람이 그룹 옮기기와 거의 동시에 보내면 한쪽 값이 되돌아갈 수 있다 (드물어서 허용)
+    fun changeDisplay(isVisible: Boolean, color: String?) {
+        this.isVisible = isVisible
+        this.color = color
+    }
+
     companion object {
         fun create(
             user: User,
