@@ -37,4 +37,8 @@ interface SubscribeRepository : JpaRepository<Subscribe, Long> {
     @Modifying
     @Query("delete from Subscribe s where s.calendar.id = :calendarId")
     fun deleteAllInCalendar(calendarId: Long): Int
+
+    // 캘린더 알림 수신 대상자 조회 (알림 비활성화 및 변경자 본인 제외)
+    @Query("select s from Subscribe s join fetch s.user where s.calendar.id = :calendarId and s.notificationEnabled = true and s.user.id <> :actorId")
+    fun findAllNotificationEnabledByCalendarId(calendarId: Long, actorId: Long): List<Subscribe>
 }
