@@ -12,6 +12,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
@@ -20,7 +21,15 @@ import java.time.Instant
 // 이용자별 일정 표시 설정 (calendar는 원본 일정과 같은 캘린더인지 검증용)
 @Entity
 @EntityListeners(AuditingEntityListener::class)
-@Table(name = "event_options")
+@Table(
+    name = "event_options",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uk_event_options_subscribe_event",
+            columnNames = ["subscribe_id", "event_id"],
+        ),
+    ],
+)
 class EventOption protected constructor(
     subscribe: Subscribe,
     event: Event,

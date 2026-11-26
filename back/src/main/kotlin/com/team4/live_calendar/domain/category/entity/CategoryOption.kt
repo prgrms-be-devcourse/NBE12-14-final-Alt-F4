@@ -12,6 +12,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
@@ -20,7 +21,15 @@ import java.time.Instant
 // 이용자별 카테고리 설정: 표시 여부, 내 색 (calendar는 원본 카테고리와 같은 캘린더인지 검증용)
 @Entity
 @EntityListeners(AuditingEntityListener::class)
-@Table(name = "category_options")
+@Table(
+    name = "category_options",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uk_category_options_subscribe_category",
+            columnNames = ["subscribe_id", "category_id"],
+        ),
+    ],
+)
 class CategoryOption protected constructor(
     subscribe: Subscribe,
     category: EventCategory,
