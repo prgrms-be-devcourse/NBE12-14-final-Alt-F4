@@ -15,6 +15,8 @@ data class RoomSummaryResponse(
     val dailyStartTime: LocalTime,
     val dailyEndTime: LocalTime,
     val timezone: String,
+    // 확정 일정이 들어가는 공통 캘린더. 프론트가 사이드바에서 조율방 캘린더를 구분하고 방으로 이동할 때 쓴다
+    val calendarId: Long,
     val isOwner: Boolean,
 ) {
     companion object {
@@ -27,6 +29,7 @@ data class RoomSummaryResponse(
                 dailyStartTime = room.dailyStartTime,
                 dailyEndTime = room.dailyEndTime,
                 timezone = room.timezone,
+                calendarId = requireNotNull(room.calendar.id),
                 isOwner = room.isOwner(userId),
             )
     }
