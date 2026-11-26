@@ -28,7 +28,7 @@ import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 @DataJpaTest
-@Import(JpaConfig::class, SubscribeService::class, EventService::class)
+@Import(JpaConfig::class, SubscribeService::class, CalendarGroupService::class, EventService::class)
 class SubscribeServiceTest(
     @Autowired private val service: SubscribeService,
     @Autowired private val em: EntityManager,

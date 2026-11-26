@@ -16,4 +16,6 @@ interface CalendarGroupRepository : JpaRepository<CalendarGroup, Long> {
     // 내 그룹 중 가장 큰 순서 값 (그룹이 없으면 null)
     @Query("select max(g.displayOrder) from CalendarGroup g where g.user.id = :userId")
     fun findMaxDisplayOrder(userId: Long): Int?
+
+    fun findFirstByUserIdAndNameOrderByIdAsc(userId: Long, name: String): CalendarGroup?
 }
