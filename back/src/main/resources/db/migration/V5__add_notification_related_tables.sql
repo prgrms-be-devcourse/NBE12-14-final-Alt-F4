@@ -130,9 +130,3 @@ ALTER TABLE subscribes
         calendar_id,
         user_id
     );
-
-ALTER TABLE subscribes
-    ADD UNIQUE KEY uk_subscribes_user_calendar (
-    user_id,
-    calendar_id
-    );

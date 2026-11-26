@@ -28,6 +28,7 @@ class Notification protected constructor(
     calendar: Calendar?,
     type: NotificationType,
     params: Map<String, Any?>?,
+    eventHistory: EventHistory?,
 ) {
 
     @Id
@@ -45,13 +46,17 @@ class Notification protected constructor(
     var calendar: Calendar? = calendar
         protected set
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "event_history_id")
+    var eventHistory: EventHistory? = eventHistory
+        protected set
+
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "type", nullable = false, length = 50)
     var type: NotificationType = type
         protected set
 
-    // 알림 문구에 들어갈 값 (예: {"calendarName": "알고리즘 스터디"})
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "params")
     var params: Map<String, Any?>? = params
@@ -72,12 +77,14 @@ class Notification protected constructor(
             calendar: Calendar?,
             type: NotificationType,
             params: Map<String, Any?>? = null,
+            eventHistory: EventHistory? = null,
         ): Notification =
             Notification(
                 user = user,
                 calendar = calendar,
                 type = type,
                 params = params,
+                eventHistory = eventHistory,
             )
     }
 }
