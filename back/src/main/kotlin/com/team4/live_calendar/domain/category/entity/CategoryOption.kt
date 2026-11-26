@@ -62,7 +62,7 @@ class CategoryOption protected constructor(
     var isVisible: Boolean = isVisible
         protected set
 
-    // 내 카테고리 색 (CAL-007 표시·숨김 작업에서 쓴다)
+    // 내 카테고리 색 (아직 쓰지 않는다, 고도화)
     @Column(name = "color", length = 30)
     var color: String? = color
         protected set
@@ -76,6 +76,11 @@ class CategoryOption protected constructor(
     @Column(name = "updated_at", nullable = false)
     lateinit var updatedAt: Instant
         protected set
+
+    // 내 화면에서 숨긴다 (줄이 보임으로 남아 있던 경우. 지금은 그런 줄을 만드는 곳이 없다)
+    fun hide() {
+        isVisible = false
+    }
 
     companion object {
         fun create(

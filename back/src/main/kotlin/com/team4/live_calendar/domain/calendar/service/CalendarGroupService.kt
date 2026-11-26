@@ -8,6 +8,7 @@ import com.team4.live_calendar.domain.calendar.dto.GroupCategoryResponse
 import com.team4.live_calendar.domain.calendar.entity.CalendarGroup
 import com.team4.live_calendar.domain.calendar.repository.CalendarGroupRepository
 import com.team4.live_calendar.domain.calendar.repository.SubscribeRepository
+import com.team4.live_calendar.domain.category.repository.CategoryOptionRepository
 import com.team4.live_calendar.domain.category.repository.EventCategoryRepository
 import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
@@ -24,10 +25,12 @@ class CalendarGroupService(
     private val subscribeRepository: SubscribeRepository,
     private val userRepository: UserRepository,
     private val eventCategoryRepository: EventCategoryRepository,
+    private val categoryOptionRepository: CategoryOptionRepository,
 ) {
 
-    // 내 그룹과 그 안의 내 캘린더, 캘린더마다 그 캘린더의 카테고리
-    // 쿼리는 그룹 한 번, 이용 관계 + 캘린더 한 번, 카테고리 한 번 (캘린더가 없으면 카테고리 쿼리는 하지 않는다)
+    // 내 그룹과 그 안의 내 캘린더, 캘린더마다 그 캘린더의 카테고리 (내가 숨긴 카테고리는 isVisible=false)
+    // 쿼리는 그룹 한 번, 이용 관계 + 캘린더 한 번, 카테고리 한 번, 내가 숨긴 카테고리 한 번
+    // (캘린더가 없으면 카테고리 쿼리 두 개는 하지 않는다)
     fun findMyGroups(userId: Long): List<CalendarGroupWithCalendarsResponse> {
         val groups = calendarGroupRepository.findAllByUserIdOrdered(userId)
         val subscribes = subscribeRepository.findAllWithCalendarByUserId(userId)
@@ -35,8 +38,10 @@ class CalendarGroupService(
         val categoriesByCalendarId = if (subscribes.isEmpty()) {
             emptyMap()
         } else {
+            // 한 회원은 한 캘린더에 이용 관계가 하나라, 카테고리 ID만으로 내 숨김인지 알 수 있다
+            val hiddenCategoryIds = categoryOptionRepository.findHiddenCategoryIds(subscribes.map { requireNotNull(it.id) }).toSet()
             eventCategoryRepository.findAllByCalendarIdInOrderByIdAsc(subscribes.map { requireNotNull(it.calendar.id) })
-                .groupBy({ it.calendar.id }, { GroupCategoryResponse.from(it) })
+                .groupBy({ it.calendar.id }, { GroupCategoryResponse.from(it, isVisible = it.id !in hiddenCategoryIds) })
         }
         // 지연 로딩 프록시의 id(group.id)는 쿼리를 더 만들지 않는다
         // 내 그룹 목록에 없는 그룹을 가리키는 이용 관계는 설계상 생기지 않으며, 생기더라도 응답에서 빠진다

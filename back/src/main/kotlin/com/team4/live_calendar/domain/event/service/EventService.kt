@@ -6,6 +6,7 @@ import com.team4.live_calendar.domain.calendar.entity.Subscribe
 import com.team4.live_calendar.domain.calendar.repository.CalendarRepository
 import com.team4.live_calendar.domain.calendar.repository.SubscribeRepository
 import com.team4.live_calendar.domain.category.entity.EventCategory
+import com.team4.live_calendar.domain.category.repository.CategoryOptionRepository
 import com.team4.live_calendar.domain.category.repository.EventCategoryRepository
 import com.team4.live_calendar.domain.event.dto.EventCreateRequest
 import com.team4.live_calendar.domain.event.dto.EventResponse
@@ -47,6 +48,7 @@ class EventService(
     private val subscribeRepository: SubscribeRepository,
     private val userRepository: UserRepository,
     private val eventOptionRepository: EventOptionRepository,
+    private val categoryOptionRepository: CategoryOptionRepository,
     private val eventExceptionRepository: EventExceptionRepository,
     private val roomSharedEventRepository: RoomSharedEventRepository,
 ) {
@@ -103,7 +105,7 @@ class EventService(
     fun findHidden(userId: Long): List<EventResponse> =
         eventOptionRepository.findHiddenEventsOfUser(userId).map(EventResponse::from)
 
-    // [from, to) 기간과 겹치는 일정. 내가 이용하는 캘린더만, 내가 숨긴 캘린더·일정은 제외
+    // [from, to) 기간과 겹치는 일정. 내가 이용하는 캘린더만, 내가 숨긴 캘린더·일정·카테고리는 제외
     // 종일 일정은 보는 사람 시간대(viewTimezone, 없으면 UTC)의 날짜로 비교한다
     // 반복 일정은 기간 안의 회차마다 하나씩 (같은 id, 회차의 시간). 지운 회차는 빼고, 바뀐 회차는 바뀐 내용으로
     fun findInRange(
@@ -126,9 +128,12 @@ class EventService(
             .filter { it.isVisible }
         if (subscribes.isEmpty()) return emptyList()
 
-        val hiddenEventIds = eventOptionRepository.findHiddenEventIds(subscribes.map { it.idOrThrow() }).toSet()
-        // 내 화면에 보이는 일정인지: 숨긴 일정이 아니어야 한다
-        val visible = { event: Event -> event.id !in hiddenEventIds }
+        val subscribeIds = subscribes.map { it.idOrThrow() }
+        val hiddenEventIds = eventOptionRepository.findHiddenEventIds(subscribeIds).toSet()
+        val hiddenCategoryIds = categoryOptionRepository.findHiddenCategoryIds(subscribeIds).toSet()
+        // 내 화면에 보이는 일정인지: 숨긴 일정도, 숨긴 카테고리의 일정도 아니어야 한다
+        // 바뀐 회차도 시리즈(it.event)로 판단한다 (예외에는 카테고리 칸이 없다). category.id는 프록시 id라 쿼리를 더 만들지 않는다
+        val visible = { event: Event -> event.id !in hiddenEventIds && event.category?.id !in hiddenCategoryIds }
         val subscribedCalendarIds = subscribes.map { it.calendar.idOrThrow() }
         // 종일 일정은 보는 사람 시간대에 따라 하루까지 차이 나므로 DB에서는 앞뒤 하루씩 넉넉하게 가져와 거른다
         val dbFrom = fromInstant.minus(DB_MARGIN)
