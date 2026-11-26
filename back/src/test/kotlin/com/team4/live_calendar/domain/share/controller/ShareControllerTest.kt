@@ -139,7 +139,7 @@ class ShareControllerTest(
         val owner = persist(User.signUp("owner@mail.com", "{bcrypt}hash", "공유자"))
         val subscriber = persist(User.signUp("subscriber@mail.com", "{bcrypt}hash", "구독자"))
         val subscriberId = checkNotNull(subscriber.id)
-        val groupName = "운동"
+        val groupName = "운동/주말"
 
         val existingGroupId = if (hasMatchingGroup) {
             checkNotNull(persist(CalendarGroup.create(subscriber, groupName, null)).id)
@@ -157,10 +157,10 @@ class ShareControllerTest(
             .andReturn().response
         val shareId = JsonPath.read<Number>(shareResponse.contentAsString, "$.shareId").toLong()
 
-        val response = mockMvc.post("/api/v1/groups/{groupName}/subscriptions", "  $groupName  ") {
+        val response = mockMvc.post("/api/v1/shares/{shareId}/subscriptions", shareId) {
             with(authentication(UsernamePasswordAuthenticationToken(subscriberId.toString(), null, emptyList())))
             contentType = MediaType.APPLICATION_JSON
-            content = """{"shareId": $shareId, "calendarIds": [${calendarIds.joinToString()}]}"""
+            content = """{"groupName": "  $groupName  ", "calendarIds": [${calendarIds.joinToString()}]}"""
         }.andExpect {
             status { isCreated() }
             jsonPath("$.subscriptionIds.length()") { value(2) }
@@ -197,11 +197,11 @@ class ShareControllerTest(
             .andReturn().response
         val shareId = JsonPath.read<Number>(shareResponse.contentAsString, "$.shareId").toLong()
 
-        mockMvc.post("/api/v1/groups/{groupName}/subscriptions", "운동") {
+        mockMvc.post("/api/v1/shares/{shareId}/subscriptions", shareId) {
             with(authentication(UsernamePasswordAuthenticationToken(subscriberId.toString(), null, emptyList())))
             contentType = MediaType.APPLICATION_JSON
             content = """
-            {"shareId": $shareId, "calendarIds": [$sharedCalendarId, $unsharedCalendarId]}
+            {"groupName": "운동", "calendarIds": [$sharedCalendarId, $unsharedCalendarId]}
         """.trimIndent()
         }.andExpect {
             status { isNotFound() }

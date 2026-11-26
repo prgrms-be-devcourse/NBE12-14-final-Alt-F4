@@ -139,10 +139,10 @@ class SubscribeControllerTest(
     }
 
     private fun postBatchSubscription(group: CalendarGroup, shareId: Long, calendarId: Long) =
-        mockMvc.post("/api/v1/groups/{groupName}/subscriptions", group.name) {
+        mockMvc.post("/api/v1/shares/{shareId}/subscriptions", shareId) {
             with(loginAs(group.user))
             contentType = MediaType.APPLICATION_JSON
-            content = """{"shareId": $shareId, "calendarIds": [$calendarId]}"""
+            content = """{"groupName": "${group.name}", "calendarIds": [$calendarId]}"""
         }
 
     private data class ShareFixture(

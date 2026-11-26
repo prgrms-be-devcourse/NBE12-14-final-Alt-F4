@@ -83,17 +83,17 @@ class SubscribeService(
     @Transactional
     fun subscribeBatchFromShare(
         userId: Long,
-        groupName: String,
+        shareId: Long,
         request: SubscribeBatchRequest,
     ): List<Long> {
-        val name = groupName.trim()
+        val groupName = request.groupName.trim()
         val calendarIds = request.calendarIds.distinct()
 
-        if (name.isEmpty() || groupName.length > 100) {
+        if (groupName.isEmpty() || request.groupName.length > 100) {
             throw BusinessException(ErrorCode.INVALID_INPUT)
         }
 
-        if (request.shareId <= 0 || calendarIds.isEmpty() || calendarIds.any { it <= 0 }) {
+        if (shareId <= 0 || calendarIds.isEmpty() || calendarIds.any { it <= 0 }) {
             throw BusinessException(ErrorCode.INVALID_INPUT)
         }
 
@@ -101,15 +101,15 @@ class SubscribeService(
             ?: throw BusinessException(ErrorCode.USER_NOT_FOUND)
 
         val sharedCalendarCount = shareCalendarConnectionRepository.countPublicShareCalendars(
-            shareId = request.shareId,
+            shareId = shareId,
             calendarIds = calendarIds,
         )
         if (sharedCalendarCount != calendarIds.size.toLong()) {
             throw BusinessException(ErrorCode.PUBLIC_SHARE_CALENDAR_NOT_FOUND)
         }
 
-        val groupId = groupRepository.findFirstByUserIdAndNameOrderByIdAsc(userId, name)?.id
-            ?: calendarGroupService.create(userId, CalendarGroupRequest(name = name)).id
+        val groupId = groupRepository.findFirstByUserIdAndNameOrderByIdAsc(userId, groupName)?.id
+            ?: calendarGroupService.create(userId, CalendarGroupRequest(name = groupName)).id
 
         return calendarIds.map { calendarId ->
             subscribe(userId = userId, groupId = groupId, calendarId = calendarId)
