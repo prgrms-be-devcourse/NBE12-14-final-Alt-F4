@@ -144,7 +144,8 @@ export function CalendarScreen() {
         )}
         </div>
       </main>
-      {dialog && groups.isSuccess && <EventDialogs state={dialog} calendars={calendars} hiddenCalendarIds={hiddenCalendarIds} onChange={setDialog} />}
+      {/* 목록을 다시 불러오다 실패해도 열린 창은 그대로 둔다 (isSuccess면 창이 사라져 입력이 날아간다) */}
+      {dialog && groups.data !== undefined && <EventDialogs state={dialog} calendars={calendars} hiddenCalendarIds={hiddenCalendarIds} onChange={setDialog} />}
       {creating === "calendar" && groups.data && <CreateCalendarDialog groups={groups.data} initialGroupId={null} onClose={() => setCreating(null)} />}
       {creating === "group" && <GroupNameDialog onClose={() => setCreating(null)} />}
     </div>

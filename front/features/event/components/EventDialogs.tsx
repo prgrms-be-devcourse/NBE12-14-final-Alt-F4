@@ -153,7 +153,8 @@ function EditEventDialog({
   return (
     <Modal title={title} onClose={guard.requestClose} busy={mutation.isPending}>
       {!source ? (
-        series.isError ? <p className="text-sm text-red-600">{errorMessage(series.error)}</p> : <Spinner />
+        // 전에 실패한 상세를 다시 불러오는 중이면 오류 상태가 남아 있어도 Spinner를 보인다
+        series.isError && !series.isFetching ? <p className="text-sm text-red-600">{errorMessage(series.error)}</p> : <Spinner />
       ) : (
         <EditEventForm
           key={`${event.id}-${event.occurrenceStart}-${scope}`}
