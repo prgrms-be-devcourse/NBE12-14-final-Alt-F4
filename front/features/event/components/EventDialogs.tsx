@@ -12,7 +12,7 @@ import { Button } from "@/shared/ui/Button";
 import { ConfirmDialog } from "@/shared/ui/ConfirmDialog";
 import { Modal } from "@/shared/ui/Modal";
 import { Spinner } from "@/shared/ui/Spinner";
-import { isGoneError, useCreateEvent, useDeleteEvent, useEvent, useUpdateEvent } from "../hooks";
+import { isConflictError, isGoneError, useCreateEvent, useDeleteEvent, useEvent, useUpdateEvent } from "../hooks";
 import { eventToValues, newEventValues } from "../lib/eventForm";
 import { describeRepeat, hasCount, parseRrule } from "../lib/recurrence";
 import type { EventUpdateBody } from "../types";
@@ -112,6 +112,7 @@ function CreateEventDialog({
 }
 
 // "모든 일정" 수정은 시리즈의 첫 회차 기준으로 채운다 (고른 회차로 채우면 반복 시작이 그 날로 옮겨진다)
+// 폼 값과 보낼 version은 고정한다: 범위 없음·이 일정만·이후는 클릭할 때의 일정, 모든 일정은 창을 연 뒤 새로 받은 시리즈 상세
 function EditEventDialog({
   event,
   scope,
@@ -126,71 +127,130 @@ function EditEventDialog({
   // "이 일정과 이후" + COUNT 반복: 첫 회차인지 보려면 시리즈 시작이 필요하다
   const countRule = scope === "THIS_AND_FOLLOWING" && hasCount(event.rrule);
   const series = useEvent(event.id, scope === "ALL" || countRule);
+  // 시리즈 상세는 이 창을 연 뒤 받은 값만 쓴다 (캐시에 남은 옛 version을 고정하면 내 수정 때문에 409가 난다)
+  // isSuccess는 쓰지 않는다: 폼을 연 채 다시 조회하다 실패하면 거짓이 되어 폼이 사라진다. dataUpdatedAt은 실패해도 그대로다
+  const [openedAt] = useState(() => Date.now());
+  const seriesData = series.data !== undefined && series.dataUpdatedAt >= openedAt ? series.data : undefined;
   const mutation = useUpdateEvent();
   const guard = useDiscardGuard(onClose);
-  // "모든 일정"에서 일정 값이 바뀌면 서버가 예외 회차를 지운다 → 저장 전에 묻는다
-  const [confirmBody, setConfirmBody] = useState<EventUpdateBody | null>(null);
-  const source = scope === "ALL" ? series.data : countRule && !series.data ? undefined : event;
+  const source = scope === "ALL" ? seriesData : countRule && !seriesData ? undefined : event;
   // 남은 횟수는 계산하지 않는다: 첫 회차가 아니면 종료를 다시 고르기 전까지 막는다 (첫 회차면 서버가 ALL과 같게 처리)
-  const countBlocked = countRule && series.data !== undefined && Date.parse(series.data.startAt) !== Date.parse(event.occurrenceStart);
+  const countBlocked = countRule && seriesData !== undefined && Date.parse(seriesData.startAt) !== Date.parse(event.occurrenceStart);
 
-  function save(body: EventUpdateBody) {
-    mutation.mutate({ id: event.id, scope, occurrenceStart: scope ? event.occurrenceStart : undefined, body }, { onSuccess: onClose });
+  function save(body: EventUpdateBody, version: number) {
+    mutation.mutate({ id: event.id, scope, occurrenceStart: scope ? event.occurrenceStart : undefined, version, body }, { onSuccess: onClose });
   }
   const title = scope === "THIS" ? "이 일정만 수정" : scope === "THIS_AND_FOLLOWING" ? "이 일정과 이후 수정" : scope === "ALL" ? "모든 일정 수정" : "일정 수정";
 
   if (isGoneError(mutation.error) || isGoneError(series.error)) {
-    return <GoneDialog title={title} error={mutation.error ?? series.error} onClose={onClose} />;
+    return <GoneDialog title={title} message={goneMessage(mutation.error ?? series.error)} onClose={onClose} />;
+  }
+  // 목록은 이미 다시 불러왔다. 내 입력으로 다시 보내지 않고 닫은 뒤 새로 열게 한다
+  if (isConflictError(mutation.error)) {
+    return <GoneDialog title={title} message="다른 곳에서 먼저 수정했어요. 최신 내용을 불러왔으니 다시 열어 수정해 주세요." onClose={onClose} />;
   }
 
   return (
     <Modal title={title} onClose={guard.requestClose} busy={mutation.isPending}>
       {!source ? (
-        series.isError ? <p className="text-sm text-red-600">{errorMessage(series.error)}</p> : <Spinner />
+        // 전에 실패한 상세를 다시 불러오는 중이면 오류 상태가 남아 있어도 Spinner를 보인다
+        series.isError && !series.isFetching ? <p className="text-sm text-red-600">{errorMessage(series.error)}</p> : <Spinner />
       ) : (
-        <EventForm
-          initial={eventToValues(source)}
+        <EditEventForm
+          key={`${event.id}-${event.occurrenceStart}-${scope}`}
+          source={source}
+          scope={scope}
           calendars={calendars}
-          calendarLocked
-          occurrenceOnly={scope === "THIS"}
-          originalRrule={source.rrule}
           countBlocked={countBlocked}
-          submitLabel="저장"
           pending={mutation.isPending}
           error={mutation.error}
-          onSubmit={(body, _calendarId, changed) => {
-            if (scope === "ALL" && source.rrule !== null && changed) setConfirmBody(body);
-            else save(body);
-          }}
+          onResetError={mutation.reset}
+          onSave={save}
           onCancel={guard.requestClose}
           onDirtyChange={guard.setDirty}
         />
       )}
       {guard.confirm}
+    </Modal>
+  );
+}
+
+// 수정 폼: 연 순간의 일정 값으로 고정한다 (실시간 신호로 상세가 다시 조회돼도 폼과 보낼 version은 그대로)
+function EditEventForm({
+  source,
+  scope,
+  calendars,
+  countBlocked,
+  pending,
+  error,
+  onResetError,
+  onSave,
+  onCancel,
+  onDirtyChange,
+}: {
+  source: EventItem;
+  scope?: RecurrenceScope;
+  calendars: CalendarSummary[];
+  countBlocked: boolean;
+  pending: boolean;
+  error: unknown;
+  onResetError: () => void;
+  onSave: (body: EventUpdateBody, version: number) => void;
+  onCancel: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+}) {
+  const [opened] = useState(source);
+  const [initial] = useState(() => eventToValues(opened));
+  // "모든 일정"에서 일정 값이 바뀌면 서버가 예외 회차를 지운다 → 저장 전에 묻는다
+  const [confirmBody, setConfirmBody] = useState<EventUpdateBody | null>(null);
+
+  return (
+    <>
+      <EventForm
+        initial={initial}
+        calendars={calendars}
+        calendarLocked
+        occurrenceOnly={scope === "THIS"}
+        originalRrule={opened.rrule}
+        countBlocked={countBlocked}
+        submitLabel="저장"
+        pending={pending}
+        error={error}
+        onSubmit={(body, _calendarId, changed) => {
+          if (scope === "ALL" && opened.rrule !== null && changed) setConfirmBody(body);
+          else onSave(body, opened.version);
+        }}
+        onCancel={onCancel}
+        onDirtyChange={onDirtyChange}
+      />
       {confirmBody && (
         <ConfirmDialog
           title="모든 일정 수정"
           message="일정 시간이나 반복을 바꾸면, 이 일정만 바꾸거나 지운 회차가 원래대로 돌아가요. 저장할까요?"
           confirmLabel="저장"
-          pending={mutation.isPending}
-          error={mutation.isError ? errorMessage(mutation.error) : null}
-          onConfirm={() => save(confirmBody)}
+          pending={pending}
+          error={error ? errorMessage(error) : null}
+          onConfirm={() => onSave(confirmBody, opened.version)}
           onClose={() => {
-            mutation.reset();
+            onResetError();
             setConfirmBody(null);
           }}
         />
       )}
-    </Modal>
+    </>
   );
 }
 
-// 다른 사람이 먼저 지운 일정: 목록은 이미 다시 불러왔고, 닫기만 남긴다
-function GoneDialog({ title, error, onClose }: { title: string; error: unknown; onClose: () => void }) {
+function goneMessage(error: unknown): string {
+  return `${errorMessage(error)} 다른 곳에서 지워졌을 수 있어요.`;
+}
+
+// 다른 곳에서 먼저 지웠거나 고친 일정: 목록은 이미 다시 불러왔고, 닫기만 남긴다
+function GoneDialog({ title, message, onClose }: { title: string; message: string; onClose: () => void }) {
   return (
     <Modal title={title} onClose={onClose} width="sm">
       <p role="alert" className="text-sm text-zinc-700">
-        {errorMessage(error)} 다른 곳에서 지워졌을 수 있어요.
+        {message}
       </p>
       <div className="mt-5 flex justify-end">
         <Button onClick={onClose} data-autofocus>
@@ -232,7 +292,7 @@ function EventDetailDialog({
     deletion.mutate({ id: event.id, scope, occurrenceStart: scope ? event.occurrenceStart : undefined }, { onSuccess: onClose });
   }
 
-  if (isGoneError(deletion.error)) return <GoneDialog title={event.title} error={deletion.error} onClose={onClose} />;
+  if (isGoneError(deletion.error)) return <GoneDialog title={event.title} message={goneMessage(deletion.error)} onClose={onClose} />;
 
   return (
     <Modal title={event.title} onClose={onClose} busy={deletion.isPending}>

@@ -47,12 +47,12 @@ class EventHistoryIntegrationTest(
     @Test
     fun `일정 생성 수정 삭제마다 스냅샷과 Outbox가 함께 쌓인다`() {
         val created = eventService.create(checkNotNull(actor.id), createRequest())
-        val updated = eventService.update(checkNotNull(actor.id), created.id, updateRequest())
+        val updated = eventService.update(checkNotNull(actor.id), created.id, updateRequest(version = created.version))
         eventService.delete(checkNotNull(actor.id), updated.id)
 
         entityManager.flush()
-        val histories = eventHistoryRepository.findAll().sortedBy { it.id }
-        val outboxes = outboxRepository.findAll().sortedBy { it.id }
+        val histories = eventHistoryRepository.findAllByEventIdOrderByIdAsc(created.id)
+        val outboxes = outboxRepository.findAllByEventId(created.id)
 
         assertEquals(
             listOf(EventHistoryActionType.CREATE, EventHistoryActionType.UPDATE, EventHistoryActionType.DELETE),
@@ -75,13 +75,14 @@ class EventHistoryIntegrationTest(
         eventService.update(
             checkNotNull(actor.id),
             created.id,
-            updateRequest("FREQ=WEEKLY;BYDAY=MO"),
+            updateRequest("FREQ=WEEKLY;BYDAY=MO", created.version),
             RecurrenceScope.THIS,
             occurrence,
         )
 
         entityManager.flush()
-        val history = eventHistoryRepository.findAll().maxByOrNull { requireNotNull(it.id) }
+        val histories = eventHistoryRepository.findAllByEventIdOrderByIdAsc(created.id)
+        val history = histories.lastOrNull()
 
         assertNotNull(history)
         assertEquals(EventHistoryTargetType.EVENT_EXCEPTION, history.targetType)
@@ -89,7 +90,7 @@ class EventHistoryIntegrationTest(
         assertEquals(occurrence.toInstant(), history.recurrenceId)
         assertEquals("회의", history.beforeData?.get("title"))
         assertEquals("변경된 회의", history.afterData?.get("title"))
-        assertEquals(2L, outboxRepository.count())
+        assertEquals(2, outboxRepository.findAllByEventId(created.id).size)
     }
 
     private fun createRequest(rrule: String? = null) = EventCreateRequest(
@@ -107,7 +108,7 @@ class EventHistoryIntegrationTest(
         rrule,
     )
 
-    private fun updateRequest(rrule: String? = null) = EventUpdateRequest(
+    private fun updateRequest(rrule: String? = null, version: Long) = EventUpdateRequest(
         null,
         "변경된 회의",
         "변경된 설명",
@@ -119,6 +120,7 @@ class EventHistoryIntegrationTest(
         null,
         rrule?.let { "Asia/Seoul" },
         rrule,
+        version,
     )
 
     private fun <T : Any> persist(entity: T): T = entity.also { entityManager.persist(it) }

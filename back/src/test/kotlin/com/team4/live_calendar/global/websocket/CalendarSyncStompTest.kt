@@ -6,6 +6,7 @@ import com.team4.live_calendar.domain.event.dto.EventCreateRequest
 import com.team4.live_calendar.domain.event.dto.EventUpdateRequest
 import com.team4.live_calendar.domain.event.service.EventService
 import com.team4.live_calendar.global.exception.BusinessException
+import com.team4.live_calendar.global.exception.ErrorCode
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
@@ -114,11 +115,57 @@ class CalendarSyncStompTest : StompTestSupport() {
                     endAt = OffsetDateTime.parse("2026-11-16T11:00:00+09:00"),
                     timezone = null,
                     rrule = "FREQ=WEEKLY;BYDAY=MO",
+                    version = weekly.version,
                 ),
             )
         }
 
         // then
+        assertNoRealSignal(received)
+    }
+
+    @Test
+    fun `version이 달라 409로 막힌 수정은 신호를 보내지 않는다`() {
+        // given: 일정을 만들고 한 번 고쳐 version 1, 그 신호까지 받아 둔다
+        val owner = newUser()
+        val subscriber = newUser()
+        val calendar = newCalendar().also {
+            join(owner, it, CalendarRole.OWNER)
+            join(subscriber, it, CalendarRole.SUBSCRIBER)
+        }
+        val destination = "/topic/calendars/${calendar.id}"
+        val received = connect(tokenOf(subscriber)).subscribeTo(destination)
+        assertReceives(destination, received)
+        val created = eventService.create(
+            owner.id!!,
+            EventCreateRequest(
+                calendarId = calendar.id!!,
+                categoryId = null,
+                title = "팀 회의",
+                description = null,
+                location = null,
+                startAt = OffsetDateTime.parse("2026-11-18T14:00:00+09:00"),
+                endAt = OffsetDateTime.parse("2026-11-18T15:00:00+09:00"),
+            ),
+        )
+        awaitSignal(received, SyncType.EVENTS_CHANGED)
+        val stale = EventUpdateRequest(
+            categoryId = null,
+            title = "제목 변경",
+            description = null,
+            location = null,
+            startAt = OffsetDateTime.parse("2026-11-18T14:00:00+09:00"),
+            endAt = OffsetDateTime.parse("2026-11-18T16:00:00+09:00"),
+            version = created.version,
+        )
+        eventService.update(owner.id!!, created.id, stale)
+        awaitSignal(received, SyncType.EVENTS_CHANGED)
+
+        // when: 옛 version으로 다시 고친다
+        val e = assertThrows<BusinessException> { eventService.update(owner.id!!, created.id, stale) }
+
+        // then
+        assertEquals(ErrorCode.EVENT_VERSION_CONFLICT, e.errorCode)
         assertNoRealSignal(received)
     }
 

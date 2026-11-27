@@ -20,6 +20,8 @@ data class EventResponse(
     // 반복 일정의 회차: 이 회차의 원래 시작 (회차를 옮겨도 그대로) / 반복 없는 일정·상세·생성·전체 수정: startAt과 같음
     // 이 일정만 수정·삭제할 때 이 값을 그대로 보낸다
     val occurrenceStart: Instant,
+    // 충돌 감지용. 반복 회차·바뀐 회차는 시리즈의 version. 수정할 때 그대로 보낸다
+    val version: Long,
     val createdAt: Instant,
     val updatedAt: Instant,
 ) {
@@ -45,6 +47,7 @@ data class EventResponse(
                 timezone = event.timezone,
                 rrule = event.rrule,
                 occurrenceStart = occurrenceStart,
+                version = event.version,
                 createdAt = event.createdAt,
                 updatedAt = event.updatedAt,
             )

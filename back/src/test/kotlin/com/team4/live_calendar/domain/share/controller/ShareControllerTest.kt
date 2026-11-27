@@ -9,6 +9,8 @@ import com.team4.live_calendar.domain.calendar.repository.CalendarGroupRepositor
 import com.team4.live_calendar.domain.calendar.repository.SubscribeRepository
 import com.team4.live_calendar.domain.share.entity.ShareCalendarConnection
 import com.team4.live_calendar.domain.share.entity.ShareInfo
+import com.team4.live_calendar.domain.share.entity.ShareTagConnection
+import com.team4.live_calendar.domain.share.entity.Tag
 import com.team4.live_calendar.domain.share.repository.ShareInfoRepository
 import com.team4.live_calendar.domain.user.entity.User
 import com.team4.live_calendar.global.publicid.PublicIds
@@ -343,11 +345,85 @@ class ShareControllerTest(
         }
     }
 
-    private fun getShareList(user: User) =
+    @Test
+    fun `키워드는 공개 공유 항목의 제목과 소개에서 찾는다`() {
+        val owner = persist(User.signUp("owner@mail.com", "{bcrypt}hash", "공유자"))
+        val reader = persist(User.signUp("reader@mail.com", "{bcrypt}hash", "조회자"))
+        persist(ShareInfo.create(owner, "MLB 경기 일정", null, null, isPublic = true))
+        persist(ShareInfo.create(owner, "이번 주 경기", null, "다가오는 mlb 일정을 확인해요.", isPublic = true))
+        persist(ShareInfo.create(owner, "MLB 연습 일정", null, null, isPublic = false))
+        persist(ShareInfo.create(owner, "개인 일정", null, "mlb 관람 준비", isPublic = false))
+        persist(ShareInfo.create(owner, "축구 일정", null, null, isPublic = true))
+
+        val response = getShareList(reader, keyword = "  mLb  ")
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(2) }
+            }
+            .andReturn().response
+
+        val titles = JsonPath.read<List<String>>(response.contentAsString, "$[*].title")
+        assertEquals(setOf("MLB 경기 일정", "이번 주 경기"), titles.toSet())
+    }
+
+    @Test
+    fun `태그 이름이 일치하는 공개 공유 항목을 한 번만 반환한다`() {
+        val owner = persist(User.signUp("owner@mail.com", "{bcrypt}hash", "공유자"))
+        val reader = persist(User.signUp("reader@mail.com", "{bcrypt}hash", "조회자"))
+        val sports = persist(Tag.create("Sports"))
+        val sportsNews = persist(Tag.create("SportsNews"))
+        val tagged = persist(ShareInfo.create(owner, "경기 일정", null, null, isPublic = true))
+        val other = persist(ShareInfo.create(owner, "스포츠 뉴스", null, null, isPublic = true))
+        val privateShare = persist(ShareInfo.create(owner, "개인 운동 일정", null, null, isPublic = false))
+        repeat(2) { persist(ShareTagConnection.create(tagged, sports)) }
+        persist(ShareTagConnection.create(other, sportsNews))
+        persist(ShareTagConnection.create(privateShare, sports))
+
+        getShareList(reader, tag = "  sports  ").andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].title") { value("경기 일정") }
+        }
+    }
+
+    @Test
+    fun `키워드와 태그를 함께 보내면 두 조건을 만족하는 항목을 반환한다`() {
+        val owner = persist(User.signUp("owner@mail.com", "{bcrypt}hash", "공유자"))
+        val reader = persist(User.signUp("reader@mail.com", "{bcrypt}hash", "조회자"))
+        val sports = persist(Tag.create("스포츠"))
+        val both = persist(ShareInfo.create(owner, "야구 경기 일정", null, null, isPublic = true))
+        val tagOnly = persist(ShareInfo.create(owner, "농구 일정", null, null, isPublic = true))
+        persist(ShareInfo.create(owner, "야구 관람 모임", null, null, isPublic = true))
+        persist(ShareTagConnection.create(both, sports))
+        persist(ShareTagConnection.create(tagOnly, sports))
+
+        getShareList(reader, keyword = "야구", tag = "스포츠").andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].title") { value("야구 경기 일정") }
+        }
+    }
+
+    @Test
+    fun `공백 검색 조건은 생략해 공개 목록을 반환한다`() {
+        val reader = persist(User.signUp("reader@mail.com", "{bcrypt}hash", "조회자"))
+        persist(ShareInfo.create(reader, "공개 일정", null, null, isPublic = true))
+        persist(ShareInfo.create(reader, "비공개 일정", null, null, isPublic = false))
+
+        getShareList(reader, keyword = "  ", tag = "  ").andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].title") { value("공개 일정") }
+        }
+    }
+
+    private fun getShareList(user: User, keyword: String? = null, tag: String? = null) =
         mockMvc.get("/api/v1/shares") {
             with(authentication(
                 UsernamePasswordAuthenticationToken(checkNotNull(user.id).toString(), null, emptyList()),
             ))
+            keyword?.let { param("keyword", it) }
+            tag?.let { param("tag", it) }
         }
 
     private fun setShareCreatedAt(share: ShareInfo, createdAt: Instant) {

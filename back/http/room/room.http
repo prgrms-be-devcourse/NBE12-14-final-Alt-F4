@@ -122,3 +122,79 @@ Content-Type: application/json
 {
   "groupId": {{groupId}}
 }
+
+### ===== 일정 공유 =====
+# ※ 방에 참여한 계정으로 실행한다. 조율 기간은 위 "조율방 생성"의 11/24~11/28(서울)이다.
+# ※ calendarId는 calendar.http "캘린더 생성"으로 저장한 내 캘린더 id다.
+
+### 공유할 내 일정 만들기 (201) - 조율 기간 안의 일정. 응답 id를 shareEventId로 저장
+POST {{baseUrl}}/api/v1/events
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "calendarId": {{calendarId}},
+  "categoryId": null,
+  "title": "개인 일정",
+  "description": null,
+  "location": null,
+  "startAt": "2026-11-25T10:00:00+09:00",
+  "endAt": "2026-11-25T11:00:00+09:00",
+  "timezone": "Asia/Seoul"
+}
+
+> {%
+    client.global.set("shareEventId", response.body.id);
+%}
+
+### 내 일정 공유 (201) - 여러 개를 한 번에 보낼 수 있고 모두 "시간만" 표시로 시작. 반복 일정은 반복 일정 id 하나만 보낸다
+POST {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "eventIds": [{{shareEventId}}]
+}
+
+> {%
+    client.global.set("sharedEventId", response.body[0].id);
+%}
+
+### 같은 일정을 다시 공유 (201) - 새로 만들지 않고 기존 공유를 그대로 돌려준다
+POST {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "eventIds": [{{shareEventId}}]
+}
+
+### 빈 목록 공유 (400 INVALID_INPUT)
+POST {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "eventIds": []
+}
+
+### 방의 공유 일정 (200) - 서울 11/24 00:00 ~ 12/1 00:00 주간. 내 공유에만 title·eventId가 온다
+GET {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events?from=2026-11-23T15:00:00Z&to=2026-11-30T15:00:00Z
+Authorization: Bearer {{accessToken}}
+
+### 조회 구간이 93일 초과 (400 INVALID_DATE_RANGE)
+GET {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events?from=2026-11-01T00:00:00Z&to=2027-03-01T00:00:00Z
+Authorization: Bearer {{accessToken}}
+
+### 표시 방식 변경 (200) - TIME_ONLY / CALENDAR_NAME_AND_TIME
+PATCH {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events/{{sharedEventId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "displayMode": "CALENDAR_NAME_AND_TIME"
+}
+
+### 공유 빼기 (204) - 내 공유만 뺄 수 있다
+DELETE {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events/{{sharedEventId}}
+Authorization: Bearer {{accessToken}}

@@ -3,8 +3,15 @@ package com.team4.live_calendar.domain.notification.service
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 
 @Component
+@ConditionalOnProperty(
+    prefix = "app.notification.outbox-worker",
+    name = ["enabled"],
+    havingValue = "true",
+    matchIfMissing = true,
+)
 class NotificationOutboxWorker(
     private val notificationOutboxService: NotificationOutboxService,
     private val notificationOutboxProcessor: NotificationOutboxProcessor,

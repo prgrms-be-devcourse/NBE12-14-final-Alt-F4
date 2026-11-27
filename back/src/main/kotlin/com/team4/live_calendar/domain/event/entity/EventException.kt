@@ -12,6 +12,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
 import org.springframework.data.annotation.CreatedDate
@@ -22,7 +23,15 @@ import java.time.Instant
 // 반복 일정의 특정 회차 예외 (삭제 또는 수정). recurrenceId는 원래 회차의 시작 일시
 @Entity
 @EntityListeners(AuditingEntityListener::class)
-@Table(name = "event_exceptions")
+@Table(
+    name = "event_exceptions",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uk_event_exceptions_event_recurrence",
+            columnNames = ["event_id", "recurrence_id"],
+        ),
+    ],
+)
 class EventException protected constructor(
     event: Event,
     recurrenceId: Instant,

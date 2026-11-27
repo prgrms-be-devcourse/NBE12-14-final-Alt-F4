@@ -15,6 +15,7 @@ export type EventItem = {
   timezone: string;
   rrule: string | null;
   occurrenceStart: string; // 반복 회차의 원래 시작. "이 일정만" 수정·삭제 때 그대로 보낸다
+  version: number; // 충돌 감지용. 반복 회차도 시리즈의 version. 수정할 때 그대로 보낸다
   createdAt: string;
   updatedAt: string;
 };

@@ -80,6 +80,7 @@ front/
 - 입력 칸 하나의 서버 검증 오류는 `fieldError(error, "name")`, 특정 오류 코드는 `hasCode(error, "GROUP_NOT_FOUND")`.
 - 칸 검사는 `<form noValidate>` + 보내기 전 직접 검사로 합니다 (브라우저 말풍선과 문구가 두 가지로 나오지 않게).
 - 서버 데이터는 TanStack Query로 받고, 바꾼 뒤에는 `invalidateQueries`로 다시 조회합니다.
+- 일정 수정(PATCH)은 받은 일정의 `version`을 같이 보냅니다. 409 `EVENT_VERSION_CONFLICT`면 다시 불러오고, 사용자가 다시 열어 고치게 합니다.
 
 ### 선택 칸·메뉴 (Dropdown·TimezoneCombobox·MenuButton)
 - 네이티브 `<select>`는 쓰지 않습니다. 값 고르기는 `Dropdown`, 시간대는 `TimezoneCombobox`(한국어 검색), 동작 메뉴는 `MenuButton`(`role="menu"`)입니다.

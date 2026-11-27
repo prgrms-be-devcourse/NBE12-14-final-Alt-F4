@@ -6,9 +6,7 @@ import jakarta.persistence.*
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
-import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalTime
+import java.time.*
 
 // 일정 조율방. 날짜와 시간대는 timezone 기준의 현지 날짜/시각
 @Entity
@@ -85,6 +83,23 @@ class SchedulingRoom protected constructor(
 
     // owner는 LAZY 프록시지만 id만 읽으면 DB를 다시 조회하지 않는다
     fun isOwner(userId: Long): Boolean = owner.id == userId
+
+    // 그날(date)의 조율 시간 범위를 UTC 순간으로
+    // 끝이 시작보다 이르거나 같으면 다음 날 그 시각까지 (22:00~02:00, 00:00~00:00 = 24시간)
+    fun windowOn(date: LocalDate): Pair<Instant, Instant> {
+        val zone = ZoneId.of(timezone)
+        val endDate = if (dailyEndTime.isAfter(dailyStartTime)) date else date.plusDays(1)
+        return ZonedDateTime.of(date, dailyStartTime, zone).toInstant() to
+                ZonedDateTime.of(endDate, dailyEndTime, zone).toInstant()
+    }
+
+    // 조율 기간 전체를 UTC 순간으로: 시작 날짜 0시 ~ (마지막 날 다음 날 0시, 마지막 날 범위의 끝 중 늦은 쪽)
+    fun period(): Pair<Instant, Instant> {
+        val zone = ZoneId.of(timezone)
+        val start = startDate.atStartOfDay(zone).toInstant()
+        val end = maxOf(endDate.plusDays(1).atStartOfDay(zone).toInstant(), windowOn(endDate).second)
+        return start to end
+    }
 
     companion object {
         fun create(

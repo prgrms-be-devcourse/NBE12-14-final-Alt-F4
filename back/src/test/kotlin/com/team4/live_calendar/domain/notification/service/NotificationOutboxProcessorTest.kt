@@ -139,6 +139,9 @@ class NotificationOutboxProcessorTest(
         val claimedId = assertNotNull(outboxService.claimNext())
         entityManager.clear()
         outboxService.markRetry(claimedId, "일시적 오류")
+        // @Transactional 테스트에서는 markRetry가 외부 테스트 트랜잭션에 참여하므로,
+        // clear 전에 변경사항을 flush해 DB 반영을 보장한다.
+        entityManager.flush()
         entityManager.clear()
 
         val retrying = outboxRepository.findById(claimedId).orElseThrow()

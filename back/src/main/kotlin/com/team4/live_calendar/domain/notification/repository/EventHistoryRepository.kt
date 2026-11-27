@@ -3,4 +3,6 @@ package com.team4.live_calendar.domain.notification.repository
 import com.team4.live_calendar.domain.notification.entity.EventHistory
 import org.springframework.data.jpa.repository.JpaRepository
 
-interface EventHistoryRepository : JpaRepository<EventHistory, Long>
+interface EventHistoryRepository : JpaRepository<EventHistory, Long> {
+    fun findAllByEventIdOrderByIdAsc(eventId: Long): List<EventHistory>
+}
