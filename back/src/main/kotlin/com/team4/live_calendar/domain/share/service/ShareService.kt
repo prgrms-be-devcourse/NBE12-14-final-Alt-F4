@@ -118,7 +118,16 @@ class ShareService(
     }
 
     @Transactional(readOnly = true)
-    fun findPublicShares(): List<ShareSummaryResponse> =
-        shareInfoRepository.findAllByIsPublicTrueOrderByCreatedAtDescIdDesc()
-            .map { share -> ShareSummaryResponse.from(share, publicIds) }
+    fun findPublicShares(
+        keyword: String? = null,
+        tag: String? = null,
+    ): List<ShareSummaryResponse> {
+        val normalizedKeyword = keyword?.trim()?.takeIf { it.isNotEmpty() }
+        val normalizedTag = tag?.trim()?.takeIf { it.isNotEmpty() }
+
+        return shareInfoRepository.searchPublicShares(
+            keyword = normalizedKeyword,
+            tag = normalizedTag,
+        ).map { share -> ShareSummaryResponse.from(share, publicIds) }
+    }
 }
