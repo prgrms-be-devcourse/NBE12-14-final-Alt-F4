@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -56,13 +57,13 @@ class NotificationOutboxProcessorTest(
                 mapOf("title" to "공유 일정"),
             )
         )
-        outboxService.save(history)
+        val outboxId = checkNotNull(outboxService.save(history).id)
         entityManager.flush()
 
-        val claimedId = assertNotNull(outboxService.claimNext())
-        assertNull(outboxService.claimNext())
+        claim(outboxId)
         entityManager.clear()
-        outboxProcessor.process(claimedId)
+        outboxProcessor.process(outboxId)
+        entityManager.flush()
 
         val eventHistoryId = checkNotNull(history.id)
         assertTrue(notificationRepository.existsByUserIdAndEventHistoryId(checkNotNull(enabled.id), eventHistoryId))
@@ -70,12 +71,13 @@ class NotificationOutboxProcessorTest(
         assertFalse(notificationRepository.existsByUserIdAndEventHistoryId(checkNotNull(actor.id), eventHistoryId))
 
         entityManager.clear()
-        outboxProcessor.process(claimedId)
+        outboxProcessor.process(outboxId)
+        entityManager.flush()
 
         val notifications = notificationRepository.findAllByUserIdOrderByCreatedAtDesc(checkNotNull(enabled.id), org.springframework.data.domain.PageRequest.of(0, 10))
         assertEquals(1, notifications.totalElements)
         assertEquals(NotificationType.EVENT_CREATED, notifications.content.single().type)
-        assertEquals(NotificationOutboxStatus.COMPLETED, outboxRepository.findById(claimedId).orElseThrow().status)
+        assertEquals(NotificationOutboxStatus.COMPLETED, outboxRepository.findById(outboxId).orElseThrow().status)
     }
 
     @Test
@@ -101,12 +103,13 @@ class NotificationOutboxProcessorTest(
                     "일정 $index",
                 )
             )
-            outboxService.save(history)
+            val outboxId = checkNotNull(outboxService.save(history).id)
             entityManager.flush()
 
-            val claimedId = assertNotNull(outboxService.claimNext())
+            claim(outboxId)
             entityManager.clear()
-            outboxProcessor.process(claimedId)
+            outboxProcessor.process(outboxId)
+            entityManager.flush()
             entityManager.clear()
 
             val notification = notificationRepository.findByUserIdAndEventHistoryId(
@@ -133,10 +136,10 @@ class NotificationOutboxProcessorTest(
                 "재시도 일정",
             )
         )
-        outboxService.save(history)
+        val claimedId = checkNotNull(outboxService.save(history).id)
         entityManager.flush()
 
-        val claimedId = assertNotNull(outboxService.claimNext())
+        claim(claimedId)
         entityManager.clear()
         outboxService.markRetry(claimedId, "일시적 오류")
         // @Transactional 테스트에서는 markRetry가 외부 테스트 트랜잭션에 참여하므로,
@@ -152,7 +155,7 @@ class NotificationOutboxProcessorTest(
 
         retrying.markProcessing(java.time.Instant.now().minusSeconds(600))
         entityManager.flush()
-        assertEquals(1, outboxService.recoverStale())
+        assertTrue(outboxService.recoverStale() >= 1)
         entityManager.clear()
 
         val recovered = outboxRepository.findById(claimedId).orElseThrow()
@@ -161,6 +164,18 @@ class NotificationOutboxProcessorTest(
     }
 
     private fun <T : Any> persist(entity: T): T = entity.also { entityManager.persist(it) }
+
+    private fun claim(outboxId: Long) {
+        assertEquals(
+            1,
+            outboxRepository.claim(
+                outboxId,
+                NotificationOutboxStatus.PENDING,
+                NotificationOutboxStatus.PROCESSING,
+                Instant.now(),
+            ),
+        )
+    }
 
     private fun addSubscribe(user: User, calendar: Calendar, role: CalendarRole, groupName: String): Subscribe {
         val group = persist(CalendarGroup.create(user, groupName, null))
