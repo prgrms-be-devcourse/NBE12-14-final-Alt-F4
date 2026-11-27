@@ -56,6 +56,10 @@ class RoomSharedEvent protected constructor(
     lateinit var updatedAt: Instant
         protected set
 
+    fun changeDisplayMode(displayMode: SharedEventDisplayMode) {
+        this.displayMode = displayMode
+    }
+
     companion object {
         fun create(
             member: RoomMember,
