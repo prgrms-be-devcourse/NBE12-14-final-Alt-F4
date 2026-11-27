@@ -235,7 +235,7 @@ class EventService(
             }
         }
 
-        // 전체 수정에서 회차 일정(시간·규칙·종일·시간대)이 바뀌면 기존 예외는 원래 회차와 맞지 않아 지운다
+        // 전체 수정에서 회차 일정(시간·규칙·종일·시간대)이 바뀌면 기존 예외는 원래 회차와 맞지 않아 지운다 (종일 일정은 시간대를 보지 않는다)
         val scheduleBefore = event.schedule()
         val (startAt, endAt) = toPeriod(request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate)
         // 시간대를 보내지 않으면 기존 값 유지. 단, 반복 시간 일정이 아니었다면 기존 값이 기본값(UTC)일 수 있어
@@ -433,7 +433,8 @@ class EventService(
         scope ?: throw BusinessException(ErrorCode.RECURRENCE_SCOPE_REQUIRED)
 
     // 회차가 생기는 방식. 전체 수정에서 이 값이 바뀌면 기존 예외를 지운다
-    private fun Event.schedule(): List<Any?> = listOf(startAt, endAt, isAllDay, timezone, rrule)
+    // 종일 회차는 UTC 날짜로 펼치므로 시간대가 바뀌어도 회차가 그대로다
+    private fun Event.schedule(): List<Any?> = listOf(startAt, endAt, isAllDay, timezone.takeUnless { isAllDay }, rrule)
 
     // 생성과 이 일정과 이후 수정이 같이 쓰는 일정 만들기 (검증 포함, 저장은 하지 않음)
     // timezone: 검증한 시간대 또는 null (null이면 기본값 UTC로 저장)

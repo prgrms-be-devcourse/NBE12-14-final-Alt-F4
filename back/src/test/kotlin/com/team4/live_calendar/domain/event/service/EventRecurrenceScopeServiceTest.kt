@@ -121,7 +121,7 @@ class EventRecurrenceScopeServiceTest(
         rrule = rrule,
     )
 
-    private fun allDayUpdate(date: String, title: String) = EventUpdateRequest(
+    private fun allDayUpdate(date: String, title: String, timezone: String? = null) = EventUpdateRequest(
         categoryId = null,
         title = title,
         description = null,
@@ -129,6 +129,7 @@ class EventRecurrenceScopeServiceTest(
         isAllDay = true,
         startDate = LocalDate.parse(date),
         endDate = LocalDate.parse(date),
+        timezone = timezone,
         rrule = "FREQ=DAILY;COUNT=5",
     )
 
@@ -546,5 +547,36 @@ class EventRecurrenceScopeServiceTest(
         // then
         assertEquals(1, exceptionsOf(event).size)
         assertEquals(2, findKst("2026-11-16", "2026-12-01").size)
+    }
+
+    @Test
+    fun `종일 반복 일정을 전체 수정으로 시간대만 바꾸면 예외가 남는다`() {
+        // given: 11/16 ~ 11/20 매일, 11/17 회차만 이름을 바꿈
+        val event = createAllDayDaily(timezone = "Asia/Seoul")
+        updateThis(event, OffsetDateTime.parse("2026-11-17T00:00:00Z"), allDayUpdate("2026-11-17", "바뀐 종일"))
+
+        // when: 종일 회차는 UTC 날짜로 펼치므로 시간대만 바꿔도 회차는 그대로다
+        eventService.update(owner.id!!, event.id, allDayUpdate("2026-11-16", "종일", timezone = "America/New_York"), RecurrenceScope.ALL)
+
+        // then
+        assertEquals(1, exceptionsOf(event).size)
+        assertEquals("바뀐 종일", findKst("2026-11-16", "2026-11-21")[1].title)
+    }
+
+    @Test
+    fun `시간 반복 일정을 전체 수정으로 시간대만 바꾸면 예외가 지워진다`() {
+        // given: 11/23 회차만 이름을 바꿈
+        val event = createWeekly()
+        updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T08:00", "2026-11-23T09:00", title = "바뀐 회의"))
+
+        // when: 시각은 그대로 두고 시간대만 바꾼다 (도쿄는 한국과 같은 시각이라 월요일 그대로). 시간 일정은 시간대가 회차 계산 기준이라 예외를 지운다
+        eventService.update(
+            owner.id!!, event.id,
+            timedUpdate("2026-11-16T08:00", "2026-11-16T09:00", timezone = "Asia/Tokyo"),
+            RecurrenceScope.ALL,
+        )
+
+        // then
+        assertTrue(exceptionsOf(event).isEmpty())
     }
 }
