@@ -25,6 +25,9 @@ import com.team4.live_calendar.domain.share.repository.ShareCalendarConnectionRe
 import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
+import com.team4.live_calendar.global.websocket.CalendarChangedEvent
+import com.team4.live_calendar.global.websocket.SyncType
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -52,6 +55,8 @@ class CalendarService(
     private val eventCategoryRepository: EventCategoryRepository,
     private val calendarInvitationRepository: CalendarInvitationRepository,
     private val shareCalendarConnectionRepository: ShareCalendarConnectionRepository,
+    // 바뀐 사실만 이벤트로 알리고, 커밋 뒤 SyncSignalListener가 STOMP 신호로 보낸다
+    private val eventPublisher: ApplicationEventPublisher,
 ) {
 
     // 캘린더와 만든 사람의 OWNER 이용 관계를 함께 만든다
@@ -85,6 +90,7 @@ class CalendarService(
     fun update(userId: Long, calendarId: Long, request: CalendarUpdateRequest): CalendarResponse {
         val calendar = findCalendar(calendarId)
         val subscribe = checkOwner(findMySubscribe(userId, calendar))
+        eventPublisher.publishEvent(CalendarChangedEvent(SyncType.CALENDAR_UPDATED, calendarId))
         val timezone = givenTimezone(request.timezone) ?: calendar.timezone
         calendar.update(request.name, request.description, request.color, timezone)
         return CalendarResponse.from(subscribe)
@@ -116,6 +122,8 @@ class CalendarService(
         if (schedulingRoomRepository.existsByCalendarId(calendarId)) {
             throw BusinessException(ErrorCode.CALENDAR_IN_USE_BY_ROOM)
         }
+        // 409로 막힌 삭제는 알리지 않는다. 지운 뒤에도 브로커 구독은 남아 있어 구독자가 받는다
+        eventPublisher.publishEvent(CalendarChangedEvent(SyncType.CALENDAR_DELETED, calendarId))
         notificationRepository.clearCalendar(calendarId)
         eventExceptionRepository.deleteAllInCalendar(calendarId)
         eventOptionRepository.deleteAllInCalendar(calendarId)
