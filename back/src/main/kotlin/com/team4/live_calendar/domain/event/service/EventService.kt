@@ -28,6 +28,10 @@ import com.team4.live_calendar.domain.room.repository.RoomSharedEventRepository
 import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
+import com.team4.live_calendar.global.websocket.CalendarChangedEvent
+import com.team4.live_calendar.global.websocket.DisplayChangedEvent
+import com.team4.live_calendar.global.websocket.SyncType
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
@@ -53,6 +57,8 @@ class EventService(
     private val eventExceptionRepository: EventExceptionRepository,
     private val roomSharedEventRepository: RoomSharedEventRepository,
     private val eventHistoryService: EventHistoryService,
+    // 바뀐 사실만 이벤트로 알리고, 커밋 뒤 SyncSignalListener가 STOMP 신호로 보낸다
+    private val eventPublisher: ApplicationEventPublisher,
 ) {
 
     @Transactional
@@ -67,9 +73,8 @@ class EventService(
             givenTimezone(request.timezone), request.rrule,
         )
         val savedEvent = eventRepository.saveAndFlush(event)
-
-        eventHistoryService.recordCreated(event = savedEvent, actorId = userId,)
-
+        eventHistoryService.recordCreated(savedEvent, userId)
+        publishEventsChanged(savedEvent, if (savedEvent.rrule != null) null else changedPeriod(savedEvent.startAt, savedEvent.endAt, savedEvent.isAllDay))
         return EventResponse.from(savedEvent)
     }
 
@@ -88,6 +93,8 @@ class EventService(
         val event = findEvent(eventId)
         val subscribe = subscribeRepository.findForUpdate(userId, event.calendar.idOrThrow())
             ?: throw BusinessException(ErrorCode.FORBIDDEN)
+        // 내 화면만 바뀌므로 캘린더 신호가 아니라 내 다른 기기에만 알린다 (이미 숨겼어도 한 번)
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         val option = eventOptionRepository.findBySubscribeIdAndEventId(subscribe.idOrThrow(), requireNotNull(event.id))
         if (option != null) {
             option.hide()
@@ -104,6 +111,7 @@ class EventService(
         val event = findEvent(eventId)
         val subscribe = subscribeRepository.findForUpdate(userId, event.calendar.idOrThrow())
             ?: throw BusinessException(ErrorCode.FORBIDDEN)
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         eventOptionRepository.deleteOfSubscribe(subscribe.idOrThrow(), requireNotNull(event.id))
     }
 
@@ -121,12 +129,7 @@ class EventService(
         calendarIds: Collection<Long>? = null,
         viewTimezone: String? = null,
     ): List<EventResponse> {
-        val fromInstant = from.toInstant()
-        val toInstant = to.toInstant()
-        if (!fromInstant.isBefore(toInstant) || Duration.between(fromInstant, toInstant) > MAX_RANGE) {
-            throw BusinessException(ErrorCode.INVALID_DATE_RANGE)
-        }
-        val range = ViewRange(fromInstant, toInstant, ZoneId.of(validTimezone(viewTimezone)))
+        val range = toViewRange(from, to, viewTimezone)
 
         val subscribes = subscribeRepository.findAllByUserId(userId)
             .filter { calendarIds == null || it.calendar.id in calendarIds }
@@ -141,15 +144,45 @@ class EventService(
         // 바뀐 회차도 시리즈(it.event)로 판단한다 (예외에는 카테고리 칸이 없다). category.id는 프록시 id라 쿼리를 더 만들지 않는다
         val visible = { event: Event -> event.id !in hiddenEventIds && event.category?.id !in hiddenCategoryIds }
         val subscribedCalendarIds = subscribes.map { it.calendar.idOrThrow() }
-        // 종일 일정은 보는 사람 시간대에 따라 하루까지 차이 나므로 DB에서는 앞뒤 하루씩 넉넉하게 가져와 거른다
-        val dbFrom = fromInstant.minus(DB_MARGIN)
-        val dbTo = toInstant.plus(DB_MARGIN)
+        return findCalendarEventsInRange(subscribedCalendarIds, range, visible)
+    }
 
-        val singles = eventRepository.findSingleOverlapping(subscribedCalendarIds, dbFrom, dbTo)
+    // 공유 서비스에서 공개 페이지와의 연결을 확인한 캘린더 하나를 조회한다.
+    // 미리보기에는 조회자 개인의 숨김 설정 대신 공유된 캘린더의 원본 일정을 사용한다.
+    internal fun findForSharePreview(
+        calendarId: Long,
+        from: OffsetDateTime,
+        to: OffsetDateTime,
+        viewTimezone: String?,
+    ): List<EventResponse> =
+        findCalendarEventsInRange(listOf(calendarId), toViewRange(from, to, viewTimezone)) { true }
+
+    private fun toViewRange(from: OffsetDateTime, to: OffsetDateTime, viewTimezone: String?): ViewRange {
+        val fromInstant = from.toInstant()
+        val toInstant = to.toInstant()
+        if (!fromInstant.isBefore(toInstant) || Duration.between(fromInstant, toInstant) > MAX_RANGE) {
+            throw BusinessException(ErrorCode.INVALID_DATE_RANGE)
+        }
+        return ViewRange(fromInstant, toInstant, ZoneId.of(validTimezone(viewTimezone)))
+    }
+
+    // 호출부에서 조회 권한이 있는 캘린더와 적용할 표시 조건을 정한다.
+    // 여기서는 그 범위 안에서 단건 일정과 반복 회차를 같은 조회 기간으로 계산한다.
+    private fun findCalendarEventsInRange(
+        calendarIds: Collection<Long>,
+        range: ViewRange,
+        visible: (Event) -> Boolean,
+    ): List<EventResponse> {
+        // 종일 일정은 보는 사람 시간대에 따라 하루까지 차이 나므로 DB에서는 앞뒤 하루씩 넉넉하게 가져와 거른다
+        val dbFrom = range.from.minus(DB_MARGIN)
+        val dbTo = range.to.plus(DB_MARGIN)
+
+        // 단건 일정은 실제 조회 기간과 겹치는지만 확인하고, 반복 일정은 기간 안의 회차로 펼친다.
+        val singles = eventRepository.findSingleOverlapping(calendarIds, dbFrom, dbTo)
             .filter(visible)
             .filter { range.overlaps(it.startAt, it.endAt, it.isAllDay) }
             .map(EventResponse::from)
-        val expanded = eventRepository.findRecurringCandidates(subscribedCalendarIds, dbFrom, dbTo)
+        val expanded = eventRepository.findRecurringCandidates(calendarIds, dbFrom, dbTo)
             .filter(visible)
             .map { it to RecurrenceExpander.expand(it, range) }
         // 예외(지움·바뀜)가 있는 회차는 펼친 결과에서 뺀다. 바뀐 회차는 아래에서 바뀐 시간으로 다시 넣는다
@@ -169,7 +202,7 @@ class EventService(
         }
         // 다른 날로 옮긴 회차, 반복이 끝난 뒤로 옮긴 회차도 나오도록 바뀐 시간으로 따로 찾는다
         // 같은 회차에 예외가 두 줄 생겼어도 한 번만 보이도록 먼저 만든 줄만 쓴다
-        val modified = eventExceptionRepository.findModifiedOverlapping(subscribedCalendarIds, dbFrom, dbTo)
+        val modified = eventExceptionRepository.findModifiedOverlapping(calendarIds, dbFrom, dbTo)
             .sortedBy { it.id }
             .distinctBy { it.event.id to it.recurrenceId }
             .filter { visible(it.event) }
@@ -192,6 +225,8 @@ class EventService(
         val wasRecurring = event.rrule != null
         // 반복 없는 일정은 scope 없이 아래 기존 흐름. 반복 일정은 범위를 빠짐없이 나눈다 (값이 늘면 컴파일러가 알려준다)
         if (wasRecurring) {
+            // 반복 일정은 범위와 상관없이 여기서 한 번만 알린다 (ALL과 첫 회차 "이 일정과 이후"는 아래로 이어진다)
+            publishEventsChanged(event, period = null)
             when (requireScope(scope)) {
                 RecurrenceScope.THIS -> return updateOccurrence(userId, event, request, occurrenceStart)
                 RecurrenceScope.THIS_AND_FOLLOWING -> {
@@ -213,6 +248,15 @@ class EventService(
         val timezone = givenTimezone(request.timezone)
             ?: event.timezone.takeIf { event.rrule != null && !event.isAllDay }
         val recurrence = resolveRecurrence(request.rrule, request.isAllDay, startAt, endAt, timezone)
+        // 반복 없던 일정: 바꾸기 전과 후를 합친 기간을 알린다 (반복으로 바뀌면 전체)
+        if (!wasRecurring) {
+            val period = if (recurrence != null) {
+                null
+            } else {
+                union(changedPeriod(event.startAt, event.endAt, event.isAllDay), changedPeriod(startAt, endAt, request.isAllDay))
+            }
+            publishEventsChanged(event, period)
+        }
         event.update(
             title = request.title,
             description = request.description,
@@ -240,6 +284,8 @@ class EventService(
     fun delete(userId: Long, eventId: Long, scope: RecurrenceScope? = null, occurrenceStart: OffsetDateTime? = null) {
         val event = findEvent(eventId)
         checkEditable(userId, event.calendar)
+        // 범위와 상관없이 여기서 한 번만 알린다 (반복 일정은 전체)
+        publishEventsChanged(event, if (event.rrule != null) null else changedPeriod(event.startAt, event.endAt, event.isAllDay))
         // 반복 없는 일정은 scope 없이 아래 기존 흐름. 반복 일정은 범위를 빠짐없이 나눈다
         if (event.rrule != null) {
             when (requireScope(scope)) {
@@ -541,6 +587,26 @@ class EventService(
         }
     }
 
+    // 일정이 바뀌었다고 알린다. period가 null이면 전체 기간 (반복 일정)
+    private fun publishEventsChanged(event: Event, period: Pair<Instant, Instant>?) {
+        eventPublisher.publishEvent(
+            CalendarChangedEvent(
+                type = SyncType.EVENTS_CHANGED,
+                calendarId = event.calendar.idOrThrow(),
+                eventId = requireNotNull(event.id),
+                from = period?.first,
+                to = period?.second,
+            ),
+        )
+    }
+
+    // 신호에 담을 기간. 종일 일정은 보는 사람 시간대의 날짜로 비교되어(ViewRange) UTC 기간과 하루까지 어긋나므로 앞뒤 하루씩 넓힌다
+    private fun changedPeriod(startAt: Instant, endAt: Instant, isAllDay: Boolean): Pair<Instant, Instant> =
+        if (isAllDay) startAt.minus(ONE_DAY) to endAt.plus(ONE_DAY) else startAt to endAt
+
+    private fun union(a: Pair<Instant, Instant>, b: Pair<Instant, Instant>): Pair<Instant, Instant> =
+        minOf(a.first, b.first) to maxOf(a.second, b.second)
+
     private fun Calendar.idOrThrow(): Long = requireNotNull(id)
 
     private fun Subscribe.idOrThrow(): Long = requireNotNull(id)
@@ -548,5 +614,6 @@ class EventService(
     companion object {
         private val MAX_RANGE: Duration = Duration.ofDays(93)
         private val DB_MARGIN: Duration = Duration.ofDays(1)
+        private val ONE_DAY: Duration = Duration.ofDays(1)
     }
 }

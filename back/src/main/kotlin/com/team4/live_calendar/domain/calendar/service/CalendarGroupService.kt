@@ -13,6 +13,8 @@ import com.team4.live_calendar.domain.category.repository.EventCategoryRepositor
 import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
+import com.team4.live_calendar.global.websocket.DisplayChangedEvent
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -26,6 +28,8 @@ class CalendarGroupService(
     private val userRepository: UserRepository,
     private val eventCategoryRepository: EventCategoryRepository,
     private val categoryOptionRepository: CategoryOptionRepository,
+    // 내 그룹이 바뀌면 내 다른 기기에 알린다 (커밋 뒤 SyncSignalListener가 표시 신호로 보낸다)
+    private val eventPublisher: ApplicationEventPublisher,
 ) {
 
     // 내 그룹과 그 안의 내 캘린더, 캘린더마다 그 캘린더의 카테고리 (내가 숨긴 카테고리는 isVisible=false)
@@ -58,12 +62,17 @@ class CalendarGroupService(
     fun create(userId: Long, request: CalendarGroupRequest): CalendarGroupResponse {
         val displayOrder = calendarGroupRepository.findMaxDisplayOrder(userId)?.plus(1) ?: 0
         val group = CalendarGroup.create(userRepository.getReferenceById(userId), request.name, displayOrder)
-        return CalendarGroupResponse.from(calendarGroupRepository.saveAndFlush(group))
+        val saved = calendarGroupRepository.saveAndFlush(group)
+        // 공유 링크 구독이 새 그룹을 만들 때도 여기를 거쳐 한 번 알린다
+        // 이미 있는 그룹에 넣으면 여기를 거치지 않아 알리지 않는다 (구독 담당 코드, 팀 알림 대상)
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
+        return CalendarGroupResponse.from(saved)
     }
 
     @Transactional
     fun rename(userId: Long, groupId: Long, request: CalendarGroupRequest): CalendarGroupResponse {
         val group = findMyGroup(userId, groupId)
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         group.rename(request.name)
         return CalendarGroupResponse.from(calendarGroupRepository.saveAndFlush(group))
     }
@@ -76,6 +85,7 @@ class CalendarGroupService(
         if (subscribeRepository.existsByGroupId(groupId)) {
             throw BusinessException(ErrorCode.GROUP_NOT_EMPTY)
         }
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         calendarGroupRepository.delete(group)
     }
 

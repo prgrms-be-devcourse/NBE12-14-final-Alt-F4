@@ -237,6 +237,7 @@ class RoomControllerTest(
             jsonPath("$.length()") { value(1) }
             jsonPath("$[0].id") { value(mine.id) }
             jsonPath("$[0].isOwner") { value(true) }
+            jsonPath("$[0].calendarId") { value(mine.calendarId) }
         }
     }
 

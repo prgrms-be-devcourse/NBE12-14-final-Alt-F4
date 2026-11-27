@@ -25,6 +25,10 @@ import com.team4.live_calendar.domain.share.repository.ShareCalendarConnectionRe
 import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
+import com.team4.live_calendar.global.websocket.CalendarChangedEvent
+import com.team4.live_calendar.global.websocket.DisplayChangedEvent
+import com.team4.live_calendar.global.websocket.SyncType
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -52,6 +56,8 @@ class CalendarService(
     private val eventCategoryRepository: EventCategoryRepository,
     private val calendarInvitationRepository: CalendarInvitationRepository,
     private val shareCalendarConnectionRepository: ShareCalendarConnectionRepository,
+    // 바뀐 사실만 이벤트로 알리고, 커밋 뒤 SyncSignalListener가 STOMP 신호로 보낸다
+    private val eventPublisher: ApplicationEventPublisher,
 ) {
 
     // 캘린더와 만든 사람의 OWNER 이용 관계를 함께 만든다
@@ -72,7 +78,10 @@ class CalendarService(
             role = CalendarRole.OWNER,
             color = null,
         )
-        return CalendarResponse.from(subscribeRepository.save(owner))
+        val saved = subscribeRepository.save(owner)
+        // 새 캘린더는 아직 구독자가 없어 캘린더 신호는 보내지 않고, 내 다른 기기에만 알린다
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
+        return CalendarResponse.from(saved)
     }
 
     // 이용 관계가 있으면 역할과 상관없이 볼 수 있다 (SUBSCRIBER 포함)
@@ -85,6 +94,7 @@ class CalendarService(
     fun update(userId: Long, calendarId: Long, request: CalendarUpdateRequest): CalendarResponse {
         val calendar = findCalendar(calendarId)
         val subscribe = checkOwner(findMySubscribe(userId, calendar))
+        eventPublisher.publishEvent(CalendarChangedEvent(SyncType.CALENDAR_UPDATED, calendarId))
         val timezone = givenTimezone(request.timezone) ?: calendar.timezone
         calendar.update(request.name, request.description, request.color, timezone)
         return CalendarResponse.from(subscribe)
@@ -94,6 +104,7 @@ class CalendarService(
     @Transactional
     fun moveGroup(userId: Long, calendarId: Long, request: CalendarGroupMoveRequest): CalendarResponse {
         val subscribe = findMySubscribe(userId, findCalendar(calendarId))
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         subscribe.moveTo(findMyGroup(userId, requireNotNull(request.groupId)))
         return CalendarResponse.from(subscribe)
     }
@@ -103,6 +114,7 @@ class CalendarService(
     @Transactional
     fun changeDisplay(userId: Long, calendarId: Long, request: CalendarDisplayRequest) {
         val subscribe = findMySubscribe(userId, findCalendar(calendarId))
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         subscribe.changeDisplay(requireNotNull(request.isVisible), request.color)
     }
 
@@ -116,6 +128,8 @@ class CalendarService(
         if (schedulingRoomRepository.existsByCalendarId(calendarId)) {
             throw BusinessException(ErrorCode.CALENDAR_IN_USE_BY_ROOM)
         }
+        // 409로 막힌 삭제는 알리지 않는다. 지운 뒤에도 브로커 구독은 남아 있어 구독자가 받는다
+        eventPublisher.publishEvent(CalendarChangedEvent(SyncType.CALENDAR_DELETED, calendarId))
         notificationRepository.clearCalendar(calendarId)
         eventExceptionRepository.deleteAllInCalendar(calendarId)
         eventOptionRepository.deleteAllInCalendar(calendarId)

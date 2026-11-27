@@ -49,3 +49,76 @@ Content-Type: application/json
   "timezone": "Asia/Seoul",
   "groupId": {{groupId}}
 }
+
+### ===== 초대 링크 =====
+
+### 초대 링크 발급·재발급 (201, 방장) - 이전 링크는 무효가 된다
+POST {{baseUrl}}/api/v1/rooms/{{roomId}}/invite-links
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.global.set("inviteToken", response.body.token);
+%}
+
+# ※ 아래 두 요청은 다른 계정으로 확인한다: auth.http에서 두 번째 계정으로 가입·로그인하면 accessToken이 바뀐다.
+
+### 초대 확인 (200) - 참여하지 않는다
+GET {{baseUrl}}/api/v1/invite-links/{{inviteToken}}
+Authorization: Bearer {{accessToken}}
+
+### 초대 수락 (200) - 여러 번 보내도 참여는 한 번. groupId는 이 계정으로 group.http "그룹 생성"을 먼저 실행해서 저장한 값
+POST {{baseUrl}}/api/v1/invite-links/{{inviteToken}}/accept
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "groupId": {{groupId}}
+}
+
+# ※ 폐기는 방장 계정으로 다시 로그인한 뒤 보낸다. 폐기 후에는 위 확인·수락이 404 INVITE_LINK_NOT_FOUND가 된다(이미 참여한 회원은 그대로).
+
+### 초대 링크 폐기 (204, 방장)
+DELETE {{baseUrl}}/api/v1/rooms/{{roomId}}/invite-links
+Authorization: Bearer {{accessToken}}
+
+### ===== 회원 지정 초대 =====
+
+# ※ 순서: 계정 B로 로그인 → user.http "내 태그 저장" → 계정 A(방장)로 로그인 → user.http "태그로 회원 찾기" → 아래 회원 초대
+#        → 계정 B로 로그인 → 내가 받은 초대 → 초대 수락
+
+### 회원 초대 (201, 방장) - inviteeTag는 user.http의 "내 태그 저장"으로 저장
+POST {{baseUrl}}/api/v1/rooms/{{roomId}}/invitations
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "inviteeTag": "{{inviteeTag}}"
+}
+
+### 같은 회원을 다시 초대 (409 DUPLICATE_INVITATION) - 위 초대를 수락하기 전
+POST {{baseUrl}}/api/v1/rooms/{{roomId}}/invitations
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "inviteeTag": "{{inviteeTag}}"
+}
+
+# ※ 아래 두 요청은 초대받은 계정으로 로그인한 뒤 실행한다.
+
+### 내가 받은 초대 (200) - 대기 중이고 아직 참여하지 않은 방만
+GET {{baseUrl}}/api/v1/invitations
+Authorization: Bearer {{accessToken}}
+
+> {%
+    if (response.body.length > 0) client.global.set("invitationId", response.body[0].id);
+%}
+
+### 초대 수락 (200) - 두 번 보내도 200. groupId는 이 계정으로 group.http "그룹 생성"을 먼저 실행해서 저장한 값
+POST {{baseUrl}}/api/v1/invitations/{{invitationId}}/accept
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "groupId": {{groupId}}
+}

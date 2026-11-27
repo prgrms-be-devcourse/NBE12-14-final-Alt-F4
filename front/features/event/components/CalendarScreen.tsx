@@ -4,12 +4,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { startOfDay } from "date-fns";
 import { ChevronDown, Plus } from "lucide-react";
 import { useState } from "react";
-import { useMe } from "@/features/auth/hooks";
 import { CalendarSidebar } from "@/features/calendar/components/CalendarSidebar";
 import { CreateCalendarDialog } from "@/features/calendar/components/CreateCalendarDialog";
 import { GroupNameDialog } from "@/features/calendar/components/GroupNameDialog";
-import { toggleHiddenCalendar, useHiddenCalendarIds } from "@/features/calendar/hiddenCalendars";
-import { useGroups } from "@/features/calendar/hooks";
+import { useChangeCalendarDisplay, useGroups } from "@/features/calendar/hooks";
 import { formatDateParam, parseDateParam } from "@/shared/lib/date";
 import { MenuButton } from "@/shared/ui/MenuButton";
 import { stepDate, toView, weekDays } from "../lib/viewRange";
@@ -39,11 +37,10 @@ export function CalendarScreen() {
   const shortcutsEnabled = useShortcutsEnabled();
 
   const groups = useGroups();
-  // 끈 캘린더는 이 브라우저에 사람별로 기억한다 (새로고침·다른 화면에 다녀와도 유지)
-  const me = useMe();
-  const userId = me.data?.id;
-  const hiddenCalendarIds = useHiddenCalendarIds(userId);
+  const changeDisplay = useChangeCalendarDisplay();
   const calendars = (groups.data ?? []).flatMap((group) => group.calendars);
+  // 끈 캘린더는 서버에 사람별로 저장된다 (다른 기기에도 실시간으로 반영). 일정은 서버가 빼고 주지만, 누른 즉시 화면에서도 뺀다
+  const hiddenCalendarIds = new Set(calendars.filter((calendar) => !calendar.isVisible).map((calendar) => calendar.id));
   const colorByCalendar = new Map(calendars.map((calendar) => [calendar.id, calendar.color] as const));
 
   // "만들기 → 일정"과 C: 주소의 날짜(지금 고른 날짜). 연도 보기만 오늘
@@ -66,7 +63,8 @@ export function CalendarScreen() {
   });
 
   function toggleCalendar(calendarId: number) {
-    if (userId !== undefined) toggleHiddenCalendar(userId, calendarId);
+    const calendar = calendars.find((item) => item.id === calendarId);
+    if (calendar) changeDisplay.mutate({ id: calendarId, isVisible: !calendar.isVisible, color: calendar.myColor });
   }
 
   // 미니 달력: 지금 보기를 유지한 채 그 날짜로. 연도 보기에서 고르면 그날 일 보기

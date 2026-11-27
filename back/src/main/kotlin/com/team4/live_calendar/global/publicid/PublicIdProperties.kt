@@ -8,5 +8,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 class PublicIdProperties(
     val roomAlphabet: String,
     val userAlphabet: String,
+    val shareAlphabet: String,
     val minLength: Int,
 )

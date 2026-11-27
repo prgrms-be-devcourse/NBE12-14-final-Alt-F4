@@ -11,4 +11,7 @@ class PublicIds(properties: PublicIdProperties) {
 
     // 회원 태그 (닉네임#태그, PR3 회원 검색)
     val user = PublicIdCodec(properties.userAlphabet, properties.minLength)
+
+    // 공유 페이지 주소 (/shares/{shareId})
+    val share = PublicIdCodec(properties.shareAlphabet, properties.minLength)
 }

@@ -22,6 +22,19 @@ interface ShareCalendarConnectionRepository : JpaRepository<ShareCalendarConnect
         @Param("calendarIds") calendarIds: Collection<Long>,
     ): Long
 
+    @Query(
+        """
+    select c
+    from ShareCalendarConnection c
+    join fetch c.calendar
+    where c.share.id = :shareId
+    order by c.displayOrder asc nulls last, c.id asc
+    """,
+    )
+    fun findAllWithCalendarByShareId(
+        @Param("shareId") shareId: Long,
+    ): List<ShareCalendarConnection>
+
     // 캘린더 삭제: 이 캘린더의 공유 페이지 연결
     @Modifying
     @Query("delete from ShareCalendarConnection c where c.calendar.id = :calendarId")

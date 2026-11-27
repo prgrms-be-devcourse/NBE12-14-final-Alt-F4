@@ -13,6 +13,10 @@ import com.team4.live_calendar.domain.category.repository.EventCategoryRepositor
 import com.team4.live_calendar.domain.event.repository.EventRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
+import com.team4.live_calendar.global.websocket.CalendarChangedEvent
+import com.team4.live_calendar.global.websocket.DisplayChangedEvent
+import com.team4.live_calendar.global.websocket.SyncType
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
@@ -29,6 +33,8 @@ class CategoryService(
     private val subscribeRepository: SubscribeRepository,
     private val categoryOptionRepository: CategoryOptionRepository,
     private val eventRepository: EventRepository,
+    // 바뀐 사실만 이벤트로 알리고, 커밋 뒤 SyncSignalListener가 STOMP 신호로 보낸다
+    private val eventPublisher: ApplicationEventPublisher,
 ) {
 
     // 같은 캘린더에 같은 이름도 만들 수 있다 (그룹·캘린더 이름과 같음)
@@ -37,6 +43,7 @@ class CategoryService(
         val calendar = calendarRepository.findByIdOrNull(requireNotNull(request.calendarId))
             ?: throw BusinessException(ErrorCode.CALENDAR_NOT_FOUND)
         checkEditable(userId, requireNotNull(calendar.id))
+        publishCategoriesChanged(requireNotNull(calendar.id))
         val category = eventCategoryRepository.save(EventCategory.create(calendar, request.name, request.color))
         return CategoryResponse.from(category)
     }
@@ -45,6 +52,7 @@ class CategoryService(
     @Transactional
     fun update(userId: Long, categoryId: Long, request: CategoryUpdateRequest): CategoryResponse {
         val category = findEditableCategory(userId, categoryId)
+        publishCategoriesChanged(requireNotNull(category.calendar.id))
         category.update(request.name, request.color)
         return CategoryResponse.from(category)
     }
@@ -54,7 +62,8 @@ class CategoryService(
     // 확인과 삭제 사이에 다른 요청이 이 카테고리로 일정을 저장하면 FK 때문에 실패한다 (드물어서 막지 않음)
     @Transactional
     fun delete(userId: Long, categoryId: Long) {
-        findEditableCategory(userId, categoryId)
+        val category = findEditableCategory(userId, categoryId)
+        publishCategoriesChanged(requireNotNull(category.calendar.id))
         // 벌크 update라 일정의 updated_at은 바뀌지 않는다
         eventRepository.clearCategory(categoryId)
         categoryOptionRepository.deleteAllOfCategory(categoryId)
@@ -72,6 +81,8 @@ class CategoryService(
         val category = findCategory(categoryId)
         val subscribe = subscribeRepository.findForUpdate(userId, requireNotNull(category.calendar.id))
             ?: throw BusinessException(ErrorCode.FORBIDDEN)
+        // 내 화면만 바뀌므로 캘린더 신호가 아니라 내 다른 기기에만 알린다 (이미 숨겼어도 한 번)
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         val option = categoryOptionRepository.findBySubscribeIdAndCategoryId(requireNotNull(subscribe.id), categoryId)
         if (option != null) {
             option.hide()
@@ -89,7 +100,13 @@ class CategoryService(
         val category = findCategory(categoryId)
         val subscribe = subscribeRepository.findForUpdate(userId, requireNotNull(category.calendar.id))
             ?: throw BusinessException(ErrorCode.FORBIDDEN)
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         categoryOptionRepository.deleteOfSubscribe(requireNotNull(subscribe.id), categoryId)
+    }
+
+    // 카테고리가 바뀌면 그 캘린더 화면이 그룹 목록과 일정을 다시 불러온다 (지우면 일정의 카테고리가 비므로)
+    private fun publishCategoriesChanged(calendarId: Long) {
+        eventPublisher.publishEvent(CalendarChangedEvent(SyncType.CATEGORIES_CHANGED, calendarId))
     }
 
     // 없는 카테고리는 404

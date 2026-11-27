@@ -63,7 +63,6 @@ export function MonthView({ date, today, colorByCalendar, hiddenCalendarIds, onD
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {/* 불러오는 동안 위쪽에 가는 진행 막대 (이전 달 화면은 그대로 둔다) */}
-      {events.isFetching && <div className="absolute inset-x-0 top-0 z-10 h-0.5 animate-pulse bg-brand" aria-hidden />}
       {events.isError && (
         <div role="alert" className="flex items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
           <span>{errorMessage(events.error)}</span>

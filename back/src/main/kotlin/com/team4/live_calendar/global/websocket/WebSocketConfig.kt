@@ -29,8 +29,9 @@ class WebSocketConfig(
     }
 
     // 주소 규칙: 우편함(브로커)과 서버 코드로 가는 주소
+    // /topic: 캘린더 신호 (그 캘린더를 구독한 모두), /queue: 표시 신호 (/user/queue/display로 구독한 나에게만)
     override fun configureMessageBroker(registry: MessageBrokerRegistry) {
-        registry.enableSimpleBroker("/topic")
+        registry.enableSimpleBroker("/topic", "/queue")
             .setTaskScheduler(messageBrokerTaskScheduler)  // 하트비트 10초/10초 (스케줄러를 주면 기본값)
         registry.setApplicationDestinationPrefixes("/app")
     }

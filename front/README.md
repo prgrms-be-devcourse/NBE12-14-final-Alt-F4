@@ -46,7 +46,8 @@ front/
 │  ├─ calendar/      그룹·캘린더·카테고리, 사이드바, 캘린더 설정
 │  ├─ event/         일정 조회·만들기·수정·삭제, 캘린더 화면(툴바·월간 보기·일정 창)
 │  ├─ room/          조율방 목록·만들기·상세
-│  └─ share/         공유 페이지 만들기
+│  ├─ share/         공유 페이지 만들기
+│  └─ sync/          실시간 동기화 (STOMP 연결, 신호 받으면 다시 조회)
 └─ shared/           어디서나 쓰는 것
    ├─ api/           client.ts(API 호출), session.ts(토큰·갱신), errors.ts(ApiError)
    ├─ ui/            Button, TextField, PasswordField, fields(Textarea·Checkbox), Modal, ConfirmDialog, Dropdown, MenuButton, TimezoneCombobox, usePopover, Spinner, ComingSoon
@@ -135,7 +136,13 @@ front/
 
 ### 색과 화면 상태
 - 사용자 색은 `style={{ backgroundColor }}`로 넣습니다. Tailwind 4는 `bg-[${color}]` 같은 동적 클래스를 만들지 못합니다.
-- 사이드바에서 끈 캘린더는 `features/calendar/hiddenCalendars.ts`가 localStorage에 사람별로 기억합니다. 서버의 표시·숨김 API가 생기면 그쪽으로 옮깁니다.
+- 사이드바에서 끈 캘린더는 서버에 사람별로 저장합니다 (`PATCH /api/v1/calendars/{id}/display`, 그룹 목록의 `isVisible`). 다른 기기에도 실시간으로 반영됩니다.
+
+### 실시간 동기화 (`features/sync/`)
+- 로그인한 화면에서 `ws://{API}/ws`(STOMP)에 연결합니다. 연결할 때마다 그때의 Access 토큰을 붙이고, 서버가 연결을 거절하면(토큰 만료 등) 토큰을 갱신해 다시 연결합니다. 끊기면 3~6초마다 다시 연결합니다.
+- 구독: `/user/queue/display`(내 화면 설정) + 그룹 목록의 캘린더마다 `/topic/calendars/{id}`. 그룹 목록이 바뀌면 구독도 맞춥니다.
+- 신호에는 내용이 없습니다. 받으면 0.2~1초 뒤 한 번에 다시 조회합니다 (일정 변경은 보고 있는 기간과 겹칠 때만). 연결·재연결 직후에도 한 번 다시 조회합니다.
+- 새 화면에서 서버 데이터를 바꾸면 지금처럼 mutation의 `onSuccess`에서 다시 조회합니다. 다른 사람·다른 기기 반영은 신호가 맡습니다.
 
 ### lint (CI에서 에러)
 Next 16의 React Compiler 규칙이 켜져 있습니다.

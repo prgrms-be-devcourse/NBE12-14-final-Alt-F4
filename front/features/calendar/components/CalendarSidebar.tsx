@@ -24,7 +24,7 @@ const roleLabels: Record<string, string> = {
   SUBSCRIBER: "구독",
 };
 
-// 내 그룹 → 캘린더 목록. 끈 캘린더는 이 브라우저에 기억한다 (hiddenCalendars.ts)
+// 내 그룹 → 캘린더 목록. 끈 캘린더는 서버에 사람별로 저장한다 (PATCH /calendars/{id}/display)
 export function CalendarSidebar({ top, hiddenCalendarIds, onToggleCalendar }: Props) {
   const groups = useGroups();
   // 캘린더 만들기 창: null이면 닫힘, groupId가 null이면 첫 그룹

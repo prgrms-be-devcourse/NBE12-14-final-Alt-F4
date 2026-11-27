@@ -9,6 +9,7 @@ import com.team4.live_calendar.domain.calendar.service.SubscribeService
 import com.team4.live_calendar.domain.share.service.ShareService
 import com.team4.live_calendar.domain.share.dto.ShareCreateRequest
 import com.team4.live_calendar.domain.user.entity.User
+import com.team4.live_calendar.global.publicid.PublicIds
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.doReturn
@@ -33,6 +34,7 @@ class SubscribeControllerTest(
     @Autowired private val subscribeService: SubscribeService,
     @Autowired private val em: EntityManager,
     @Autowired private val shareService: ShareService,
+    @Autowired private val publicIds: PublicIds,
 ) {
 
     @MockitoSpyBean
@@ -172,7 +174,7 @@ class SubscribeControllerTest(
         calendarId: Long,
         groupName: String = group.name,
     ) =
-        mockMvc.post("/api/v1/shares/{shareId}/subscriptions", shareId) {
+        mockMvc.post("/api/v1/shares/{shareId}/subscriptions", publicIds.share.encode(shareId)) {
             with(loginAs(group.user))
             contentType = MediaType.APPLICATION_JSON
             content = """{"groupName": "$groupName", "calendarIds": [$calendarId]}"""

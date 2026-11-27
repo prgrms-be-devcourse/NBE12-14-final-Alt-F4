@@ -22,6 +22,7 @@ app:
   sqids:
     room-alphabet: T09FCJM2BH163XWVAGRQNZ5PSD4YKE87
     user-alphabet: JZ1EVH0MTQG73RNS895DWKB6FAP2YX4C
+    share-alphabet: 7JX8KY9MZAN0BP1CQ2DR3ES4FT5GV6HW
 
 logging:
   level:

@@ -41,4 +41,5 @@ app:
     # 운영 값은 한 번 정하면 바꾸지 않는다. 바꾸면 공유된 방 주소와 회원 태그가 전부 깨진다
     room-alphabet: ${ROOM_ID_ALPHABET}
     user-alphabet: ${USER_ID_ALPHABET}
+    share-alphabet: ${SHARE_ID_ALPHABET}
     min-length: 6

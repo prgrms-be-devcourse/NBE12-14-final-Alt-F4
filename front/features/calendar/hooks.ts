@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { eventQueryKeys } from "@/features/event/hooks";
 import {
+  changeCalendarDisplay,
   createCalendar,
   createCategory,
   createGroup,
@@ -17,6 +18,7 @@ import {
   updateCalendar,
   updateCategory,
 } from "./api";
+import type { CalendarGroup } from "./types";
 
 export const calendarQueryKeys = {
   groups: ["calendar", "groups"] as const,
@@ -57,6 +59,38 @@ export const useUpdateCalendar = () => useCalendarMutation(updateCalendar, { det
 export const useMoveCalendarGroup = () => useCalendarMutation(moveCalendarGroup, { detail: true });
 export const useDeleteCalendar = () => useCalendarMutation(deleteCalendar, { events: true });
 export const useLeaveCalendar = () => useCalendarMutation(leaveCalendar, { events: true });
+
+const displayMutationKey = ["calendar", "display"] as const;
+
+// 사이드바 체크박스: 누르자마자 목록에 반영하고(끈 캘린더의 일정은 화면에서 바로 빠진다), 실패하면 되돌린다
+// 끝나면 목록과 일정을 다시 불러온다 (서버가 끈 캘린더의 일정을 빼고 주므로, 다시 켜면 일정을 새로 받아야 한다)
+// 여러 번 빠르게 누르면 마지막 요청이 끝났을 때만 다시 불러온다 (중간 응답으로 체크가 깜빡이지 않게)
+export function useChangeCalendarDisplay() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: displayMutationKey,
+    mutationFn: changeCalendarDisplay,
+    onMutate: async ({ id, isVisible }) => {
+      await queryClient.cancelQueries({ queryKey: calendarQueryKeys.groups });
+      const previous = queryClient.getQueryData<CalendarGroup[]>(calendarQueryKeys.groups);
+      queryClient.setQueryData<CalendarGroup[]>(calendarQueryKeys.groups, (groups) =>
+        groups?.map((group) => ({
+          ...group,
+          calendars: group.calendars.map((calendar) => (calendar.id === id ? { ...calendar, isVisible } : calendar)),
+        })),
+      );
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) queryClient.setQueryData(calendarQueryKeys.groups, context.previous);
+    },
+    onSettled: async () => {
+      if (queryClient.isMutating({ mutationKey: displayMutationKey }) > 1) return;
+      await queryClient.invalidateQueries({ queryKey: calendarQueryKeys.groups });
+      await queryClient.invalidateQueries({ queryKey: eventQueryKeys.all });
+    },
+  });
+}
 
 export const useCreateCategory = () => useCalendarMutation(createCategory);
 export const useUpdateCategory = () => useCalendarMutation(updateCategory);

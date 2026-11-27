@@ -28,6 +28,9 @@ enum class ErrorCode(
     RECURRENCE_SCOPE_REQUIRED(HttpStatus.BAD_REQUEST, "반복 일정은 수정·삭제 범위(scope)를 지정해야 합니다."),
     OCCURRENCE_NOT_FOUND(HttpStatus.NOT_FOUND, "반복 일정의 해당 회차를 찾을 수 없습니다."),
 
+    // 공유
+    SHARE_NOT_FOUND(HttpStatus.NOT_FOUND, "공유 항목을 찾을 수 없습니다."),
+
     // 구독
     CALENDAR_RELATION_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 이용 중인 캘린더입니다."),
     SUBSCRIPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "해지할 구독을 찾을 수 없습니다."),
@@ -49,4 +52,9 @@ enum class ErrorCode(
     ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "조율방을 찾을 수 없습니다."),
     NOT_ROOM_OWNER(HttpStatus.FORBIDDEN, "방장만 할 수 있습니다."),
     INVALID_ROOM_PERIOD(HttpStatus.BAD_REQUEST, "조율 기간이나 시간 범위가 올바르지 않습니다."),
+    INVITE_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "유효하지 않은 초대 링크입니다."),
+    ALREADY_ROOM_MEMBER(HttpStatus.CONFLICT, "이미 참여 중인 회원입니다."),
+    DUPLICATE_INVITATION(HttpStatus.CONFLICT, "이미 초대를 보낸 회원입니다."),
+    INVITATION_NOT_FOUND(HttpStatus.NOT_FOUND, "초대를 찾을 수 없습니다."),
+    INVITATION_ALREADY_RESPONDED(HttpStatus.CONFLICT, "이미 응답한 초대입니다."),
 }

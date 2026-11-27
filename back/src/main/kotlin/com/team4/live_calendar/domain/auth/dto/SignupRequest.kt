@@ -20,6 +20,8 @@ class SignupRequest(
     val password: String,
 
     @field:NotBlank
-    @field:Size(max = 50)
+    @field:Size(min = 2, max = 20)
+    // 화면과 검색에서 "닉네임#태그"로 쓰므로 한글(완성형)·영문·숫자만 허용한다 (#, 공백, 특수문자, 이모지 금지)
+    @field:Pattern(regexp = "^[가-힣A-Za-z0-9]+$", message = "닉네임은 한글, 영문, 숫자만 쓸 수 있습니다.")
     val nickname: String,
 )
