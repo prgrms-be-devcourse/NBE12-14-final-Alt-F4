@@ -56,4 +56,8 @@ enum class ErrorCode(
     DUPLICATE_INVITATION(HttpStatus.CONFLICT, "이미 초대를 보낸 회원입니다."),
     INVITATION_NOT_FOUND(HttpStatus.NOT_FOUND, "초대를 찾을 수 없습니다."),
     INVITATION_ALREADY_RESPONDED(HttpStatus.CONFLICT, "이미 응답한 초대입니다."),
+
+    // 이 방 자신의 공통 캘린더(확정 일정)만 막는다. 다른 방의 확정 일정·구독 캘린더 일정은 공유할 수 있다
+    EVENT_NOT_SHAREABLE(HttpStatus.BAD_REQUEST, "이 조율방의 확정 일정은 공유할 수 없습니다."),
+    SHARED_EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "공유한 일정을 찾을 수 없습니다."),
 }
