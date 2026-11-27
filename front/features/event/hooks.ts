@@ -23,8 +23,9 @@ export function useEventsInRange(from: Date, to: Date) {
   });
 }
 
+// 수정 폼의 원본이라 열 때마다 다시 조회한다 (캐시에 남은 옛 상세로 폼을 열지 않게)
 export function useEvent(id: number, enabled: boolean) {
-  return useQuery({ queryKey: eventQueryKeys.detail(id), queryFn: () => fetchEvent(id), enabled });
+  return useQuery({ queryKey: eventQueryKeys.detail(id), queryFn: () => fetchEvent(id), enabled, refetchOnMount: "always" });
 }
 
 // 일정이 바뀌면 보이는 기간의 목록을 모두 다시 조회한다 (반복·이후 수정은 여러 날이 바뀐다)
@@ -43,13 +44,18 @@ export function isGoneError(error: unknown): boolean {
   return hasCode(error, "EVENT_NOT_FOUND") || hasCode(error, "OCCURRENCE_NOT_FOUND");
 }
 
+// 수정 폼을 연 뒤 다른 곳에서 먼저 고친 일정: 최신 내용을 다시 불러온다
+export function isConflictError(error: unknown): boolean {
+  return hasCode(error, "EVENT_VERSION_CONFLICT");
+}
+
 export function useUpdateEvent() {
   const invalidate = useInvalidateEvents();
   return useMutation({
     mutationFn: updateEvent,
     onSuccess: invalidate,
     onError: (error) => {
-      if (isGoneError(error)) void invalidate();
+      if (isGoneError(error) || isConflictError(error)) void invalidate();
     },
   });
 }
