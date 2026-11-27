@@ -198,10 +198,7 @@ class EventService(
                 .map { EventResponse.from(event, it.startAt, it.endAt) }
         }
         // 다른 날로 옮긴 회차, 반복이 끝난 뒤로 옮긴 회차도 나오도록 바뀐 시간으로 따로 찾는다
-        // 같은 회차에 예외가 두 줄 생겼어도 한 번만 보이도록 먼저 만든 줄만 쓴다
         val modified = eventExceptionRepository.findModifiedOverlapping(calendarIds, dbFrom, dbTo)
-            .sortedBy { it.id }
-            .distinctBy { it.event.id to it.recurrenceId }
             .filter { visible(it.event) }
             .filter { range.overlaps(requireNotNull(it.startAt), requireNotNull(it.endAt), it.event.isAllDay) }
             .map { EventResponse.from(it.event, it) }
@@ -217,8 +214,9 @@ class EventService(
         scope: RecurrenceScope? = null,
         occurrenceStart: OffsetDateTime? = null,
     ): EventResponse {
-        val event = findEvent(eventId)
+        val event = findEventForUpdate(eventId)
         checkEditable(userId, event.calendar)
+        checkVersion(event, request)
         val wasRecurring = event.rrule != null
         // 반복 없는 일정은 scope 없이 아래 기존 흐름. 반복 일정은 범위를 빠짐없이 나눈다 (값이 늘면 컴파일러가 알려준다)
         if (wasRecurring) {
@@ -266,13 +264,14 @@ class EventService(
         if (wasRecurring && event.schedule() != scheduleBefore) {
             eventExceptionRepository.deleteAllByEventId(eventId)
         }
+        event.markChanged()
         return EventResponse.from(eventRepository.saveAndFlush(event))
     }
 
     // 반복 일정은 scope가 필요하다. THIS면 그 회차만, THIS_AND_FOLLOWING이면 그 회차부터, ALL이면 지난 회차까지 모두 삭제한다
     @Transactional
     fun delete(userId: Long, eventId: Long, scope: RecurrenceScope? = null, occurrenceStart: OffsetDateTime? = null) {
-        val event = findEvent(eventId)
+        val event = findEventForUpdate(eventId)
         checkEditable(userId, event.calendar)
         // 범위와 상관없이 여기서 한 번만 알린다 (반복 일정은 전체)
         publishEventsChanged(event, if (event.rrule != null) null else changedPeriod(event.startAt, event.endAt, event.isAllDay))
@@ -287,7 +286,9 @@ class EventService(
                     val (recurrenceId, _) = findOccurrence(event, occurrenceStart)
                     // 첫 회차에서 고르면 나눌 앞부분이 없어 전체 삭제와 같다. 아니면 그 회차 전에 반복을 끝낸다
                     if (recurrenceId != event.startAt) {
-                        endRecurrenceBefore(event, recurrenceId, truncatedRecurrence(event, recurrenceId))
+                        val truncated = truncatedRecurrence(event, recurrenceId)
+                        event.markChanged()
+                        endRecurrenceBefore(event, recurrenceId, truncated)
                         return
                     }
                 }
@@ -327,6 +328,7 @@ class EventService(
                     endAt = endAt,
                 ),
             )
+        event.markChanged()
         // 바로 반영해서 응답의 updatedAt이 이번 수정 시각이 되게 한다
         return EventResponse.from(event, eventExceptionRepository.saveAndFlush(modified))
     }
@@ -344,6 +346,7 @@ class EventService(
         )
         val truncated = truncatedRecurrence(event, recurrenceId)
         checkStartsAfter(event, truncated, recurrenceId, newEvent, request.startAt, timezone)
+        event.markChanged()
         endRecurrenceBefore(event, recurrenceId, truncated)
         val saved = eventRepository.saveAndFlush(newEvent)
         copyHiddenAndShares(event, saved)
@@ -408,6 +411,7 @@ class EventService(
     // 이 회차만 삭제: 수정했던 회차면 DELETED로 바꾼다
     private fun deleteOccurrence(event: Event, occurrenceStart: OffsetDateTime?) {
         val (recurrenceId, exception) = findOccurrence(event, occurrenceStart)
+        event.markChanged()
         if (exception != null) {
             exception.markDeleted()
         } else {
@@ -422,7 +426,7 @@ class EventService(
         if (!RecurrenceExpander.isOccurrence(event, recurrenceId)) {
             throw BusinessException(ErrorCode.OCCURRENCE_NOT_FOUND)
         }
-        val exception = eventExceptionRepository.findFirstByEventIdAndRecurrenceIdOrderByIdAsc(requireNotNull(event.id), recurrenceId)
+        val exception = eventExceptionRepository.findByEventIdAndRecurrenceId(requireNotNull(event.id), recurrenceId)
         if (exception?.type == EventExceptionType.DELETED) {
             throw BusinessException(ErrorCode.OCCURRENCE_NOT_FOUND)
         }
@@ -472,6 +476,20 @@ class EventService(
 
     private fun findEvent(eventId: Long): Event =
         eventRepository.findByIdOrNull(eventId) ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
+
+    // 수정·삭제할 일정을 잠가 읽는다 (같은 일정의 동시 요청을 차례로 처리)
+    // 트랜잭션의 첫 조회여야 한다. InnoDB REPEATABLE READ는 첫 일반 조회 때 읽기 기준을 정해서, 그 뒤에 잠그면 앞 요청이 넣은 줄을 못 본다
+    // 일반 조회로 이미 읽은 일정은 잠금 조회도 그 옛 값을 그대로 돌려준다 (Hibernate). 그래서 findEvent 뒤에 부르면 안 된다
+    // 읽기 전용 트랜잭션에서 부르면 MySQL 1792 오류. update·delete의 메서드 @Transactional을 유지한다
+    private fun findEventForUpdate(eventId: Long): Event =
+        eventRepository.findForUpdate(eventId) ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
+
+    // 수정 폼을 연 뒤 다른 곳에서 먼저 바꿨으면 409 (반복 일정은 범위와 상관없이 시리즈의 version)
+    private fun checkVersion(event: Event, request: EventUpdateRequest) {
+        if (requireNotNull(request.version) != event.version) {
+            throw BusinessException(ErrorCode.EVENT_VERSION_CONFLICT)
+        }
+    }
 
     // 이용 관계가 있으면 조회 가능 (OWNER, EDITOR, VIEWER)
     private fun checkReadable(userId: Long, calendar: Calendar): Subscribe =

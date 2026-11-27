@@ -250,7 +250,7 @@ class EventControllerTest(
             contentType = MediaType.APPLICATION_JSON
             content = """
                 {"title": "제목 변경",
-                 "startAt": "2026-11-18T14:00:00+09:00", "endAt": "2026-11-18T16:00:00+09:00"}
+                 "startAt": "2026-11-18T14:00:00+09:00", "endAt": "2026-11-18T16:00:00+09:00", "version": 0}
             """
         }
 
@@ -259,6 +259,60 @@ class EventControllerTest(
             status { isOk() }
             jsonPath("$.title") { value("제목 변경") }
             jsonPath("$.endAt") { value("2026-11-18T07:00:00Z") }
+        }
+    }
+
+    @Test
+    fun `수정 본문에 version이 없으면 400 INVALID_INPUT`() {
+        // given
+        val created = createEvent()
+
+        // when
+        val result = mockMvc.patch("/api/v1/events/${created.id}") {
+            with(loginAs(owner))
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {"title": "제목 변경",
+                 "startAt": "2026-11-18T14:00:00+09:00", "endAt": "2026-11-18T16:00:00+09:00"}
+            """
+        }
+
+        // then
+        result.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_INPUT") }
+            jsonPath("$.errors[0].field") { value("version") }
+        }
+    }
+
+    @Test
+    fun `다른 곳에서 먼저 수정해 version이 다르면 409 EVENT_VERSION_CONFLICT`() {
+        // given: 먼저 고쳐 version 1
+        val created = createEvent()
+        val body = """
+            {"title": "제목 변경",
+             "startAt": "2026-11-18T14:00:00+09:00", "endAt": "2026-11-18T16:00:00+09:00", "version": 0}
+        """
+        mockMvc.patch("/api/v1/events/${created.id}") {
+            with(loginAs(owner))
+            contentType = MediaType.APPLICATION_JSON
+            content = body
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.version") { value(1) }
+        }
+
+        // when: 옛 version 0으로 다시 고친다
+        val result = mockMvc.patch("/api/v1/events/${created.id}") {
+            with(loginAs(owner))
+            contentType = MediaType.APPLICATION_JSON
+            content = body
+        }
+
+        // then
+        result.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("EVENT_VERSION_CONFLICT") }
         }
     }
 
@@ -341,7 +395,7 @@ class EventControllerTest(
             content = """
                 {"title": "주간 회의",
                  "startAt": "2026-11-17T10:00:00-05:00", "endAt": "2026-11-17T11:00:00-05:00",
-                 "timezone": "America/New_York", "rrule": "FREQ=WEEKLY;BYDAY=TU;COUNT=2"}
+                 "timezone": "America/New_York", "rrule": "FREQ=WEEKLY;BYDAY=TU;COUNT=2", "version": 0}
             """
         }
 
@@ -395,7 +449,7 @@ class EventControllerTest(
             content = """
                 {"title": "변경된 회의",
                  "startAt": "2026-11-23T10:00:00+09:00", "endAt": "2026-11-23T11:00:00+09:00",
-                 "rrule": "FREQ=WEEKLY;BYDAY=MO"}
+                 "rrule": "FREQ=WEEKLY;BYDAY=MO", "version": 0}
             """
         }
 
@@ -448,7 +502,7 @@ class EventControllerTest(
             content = """
                 {"title": "새 회의",
                  "startAt": "2026-12-07T10:00:00+09:00", "endAt": "2026-12-07T11:00:00+09:00",
-                 "timezone": "Asia/Seoul", "rrule": "FREQ=WEEKLY;BYDAY=MO"}
+                 "timezone": "Asia/Seoul", "rrule": "FREQ=WEEKLY;BYDAY=MO", "version": 0}
             """
         }.andExpect {
             status { isOk() }
@@ -475,14 +529,15 @@ class EventControllerTest(
             content = """
                 {"title": "새 회의",
                  "startAt": "2026-11-30T08:30:00+09:00", "endAt": "2026-11-30T09:30:00+09:00",
-                 "timezone": "Asia/Seoul", "rrule": "FREQ=WEEKLY;BYDAY=MO"}
+                 "timezone": "Asia/Seoul", "rrule": "FREQ=WEEKLY;BYDAY=MO", "version": 0}
             """
         }
 
-        // then
+        // then: version이 빠져서 난 400이 아니다
         result.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_INPUT") }
+            jsonPath("$.errors") { doesNotExist() }
         }
     }
 

@@ -114,6 +114,7 @@ class CalendarSyncStompTest : StompTestSupport() {
                     endAt = OffsetDateTime.parse("2026-11-16T11:00:00+09:00"),
                     timezone = null,
                     rrule = "FREQ=WEEKLY;BYDAY=MO",
+                    version = weekly.version,
                 ),
             )
         }

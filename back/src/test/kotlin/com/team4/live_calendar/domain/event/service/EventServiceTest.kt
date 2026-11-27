@@ -103,6 +103,7 @@ class EventServiceTest(
         categoryId: Long? = null,
         startAt: OffsetDateTime = start,
         endAt: OffsetDateTime = end,
+        version: Long = 0,
     ) = EventUpdateRequest(
         categoryId = categoryId,
         title = "제목 변경",
@@ -110,6 +111,7 @@ class EventServiceTest(
         location = null,
         startAt = startAt,
         endAt = endAt,
+        version = version,
     )
 
     private fun assertErrorCode(expected: ErrorCode, block: () -> Unit) {

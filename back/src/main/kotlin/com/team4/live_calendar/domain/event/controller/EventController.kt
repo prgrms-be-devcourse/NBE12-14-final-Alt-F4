@@ -77,6 +77,7 @@ class EventController(
 
     // 반복 일정은 scope 필수 (THIS: 이 일정만, THIS_AND_FOLLOWING: 이 일정과 이후, ALL: 모든 반복 일정)
     // THIS·THIS_AND_FOLLOWING은 occurrenceStart에 기간 조회 응답의 occurrenceStart(원래 회차 시작)를 그대로 보낸다
+    // 본문의 version이 지금 일정과 다르면 409 EVENT_VERSION_CONFLICT (다른 곳에서 먼저 수정함)
     @PatchMapping("/{id}")
     fun update(
         @CurrentUserId userId: Long,
