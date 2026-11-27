@@ -2,6 +2,8 @@ package com.team4.live_calendar.domain.room.controller
 
 import com.team4.live_calendar.domain.room.dto.RoomInvitationCreateRequest
 import com.team4.live_calendar.domain.room.dto.RoomInvitationResponse
+import com.team4.live_calendar.domain.room.dto.RoomJoinRequest
+import com.team4.live_calendar.domain.room.dto.RoomJoinResponse
 import com.team4.live_calendar.domain.room.service.RoomInvitationService
 import com.team4.live_calendar.global.security.CurrentUserId
 import org.springframework.http.HttpStatus
@@ -21,4 +23,16 @@ class RoomInvitationController(
         @PathVariable roomId: String,
         @RequestBody request: RoomInvitationCreateRequest,
     ): RoomInvitationResponse = roomInvitationService.invite(userId, roomId, request)
+
+    @GetMapping("/invitations")
+    fun findPendingReceived(@CurrentUserId userId: Long): List<RoomInvitationResponse> =
+        roomInvitationService.findPendingReceived(userId)
+
+    @PostMapping("/invitations/{invitationId}/accept")
+    fun accept(
+        @CurrentUserId userId: Long,
+        @PathVariable invitationId: Long,
+        @RequestBody request: RoomJoinRequest,
+    ): RoomJoinResponse = roomInvitationService.accept(userId, invitationId, request)
+
 }
