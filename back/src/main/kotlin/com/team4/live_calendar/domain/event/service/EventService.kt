@@ -27,6 +27,9 @@ import com.team4.live_calendar.domain.room.repository.RoomSharedEventRepository
 import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
+import com.team4.live_calendar.global.websocket.CalendarChangedEvent
+import com.team4.live_calendar.global.websocket.SyncType
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
@@ -51,6 +54,8 @@ class EventService(
     private val categoryOptionRepository: CategoryOptionRepository,
     private val eventExceptionRepository: EventExceptionRepository,
     private val roomSharedEventRepository: RoomSharedEventRepository,
+    // 바뀐 사실만 이벤트로 알리고, 커밋 뒤 SyncSignalListener가 STOMP 신호로 보낸다
+    private val eventPublisher: ApplicationEventPublisher,
 ) {
 
     @Transactional
@@ -64,7 +69,9 @@ class EventService(
             request.isAllDay, request.startAt, request.endAt, request.startDate, request.endDate,
             givenTimezone(request.timezone), request.rrule,
         )
-        return EventResponse.from(eventRepository.saveAndFlush(event))
+        val saved = eventRepository.saveAndFlush(event)
+        publishEventsChanged(saved, if (saved.rrule != null) null else changedPeriod(saved.startAt, saved.endAt, saved.isAllDay))
+        return EventResponse.from(saved)
     }
 
     fun get(userId: Long, eventId: Long): EventResponse {
@@ -186,6 +193,8 @@ class EventService(
         val wasRecurring = event.rrule != null
         // 반복 없는 일정은 scope 없이 아래 기존 흐름. 반복 일정은 범위를 빠짐없이 나눈다 (값이 늘면 컴파일러가 알려준다)
         if (wasRecurring) {
+            // 반복 일정은 범위와 상관없이 여기서 한 번만 알린다 (ALL과 첫 회차 "이 일정과 이후"는 아래로 이어진다)
+            publishEventsChanged(event, period = null)
             when (requireScope(scope)) {
                 RecurrenceScope.THIS -> return updateOccurrence(event, request, occurrenceStart)
                 RecurrenceScope.THIS_AND_FOLLOWING -> {
@@ -205,6 +214,15 @@ class EventService(
         val timezone = givenTimezone(request.timezone)
             ?: event.timezone.takeIf { event.rrule != null && !event.isAllDay }
         val recurrence = resolveRecurrence(request.rrule, request.isAllDay, startAt, endAt, timezone)
+        // 반복 없던 일정: 바꾸기 전과 후를 합친 기간을 알린다 (반복으로 바뀌면 전체)
+        if (!wasRecurring) {
+            val period = if (recurrence != null) {
+                null
+            } else {
+                union(changedPeriod(event.startAt, event.endAt, event.isAllDay), changedPeriod(startAt, endAt, request.isAllDay))
+            }
+            publishEventsChanged(event, period)
+        }
         event.update(
             title = request.title,
             description = request.description,
@@ -227,6 +245,8 @@ class EventService(
     fun delete(userId: Long, eventId: Long, scope: RecurrenceScope? = null, occurrenceStart: OffsetDateTime? = null) {
         val event = findEvent(eventId)
         checkEditable(userId, event.calendar)
+        // 범위와 상관없이 여기서 한 번만 알린다 (반복 일정은 전체)
+        publishEventsChanged(event, if (event.rrule != null) null else changedPeriod(event.startAt, event.endAt, event.isAllDay))
         // 반복 없는 일정은 scope 없이 아래 기존 흐름. 반복 일정은 범위를 빠짐없이 나눈다
         if (event.rrule != null) {
             when (requireScope(scope)) {
@@ -499,6 +519,26 @@ class EventService(
         }
     }
 
+    // 일정이 바뀌었다고 알린다. period가 null이면 전체 기간 (반복 일정)
+    private fun publishEventsChanged(event: Event, period: Pair<Instant, Instant>?) {
+        eventPublisher.publishEvent(
+            CalendarChangedEvent(
+                type = SyncType.EVENTS_CHANGED,
+                calendarId = event.calendar.idOrThrow(),
+                eventId = requireNotNull(event.id),
+                from = period?.first,
+                to = period?.second,
+            ),
+        )
+    }
+
+    // 신호에 담을 기간. 종일 일정은 보는 사람 시간대의 날짜로 비교되어(ViewRange) UTC 기간과 하루까지 어긋나므로 앞뒤 하루씩 넓힌다
+    private fun changedPeriod(startAt: Instant, endAt: Instant, isAllDay: Boolean): Pair<Instant, Instant> =
+        if (isAllDay) startAt.minus(ONE_DAY) to endAt.plus(ONE_DAY) else startAt to endAt
+
+    private fun union(a: Pair<Instant, Instant>, b: Pair<Instant, Instant>): Pair<Instant, Instant> =
+        minOf(a.first, b.first) to maxOf(a.second, b.second)
+
     private fun Calendar.idOrThrow(): Long = requireNotNull(id)
 
     private fun Subscribe.idOrThrow(): Long = requireNotNull(id)
@@ -506,5 +546,6 @@ class EventService(
     companion object {
         private val MAX_RANGE: Duration = Duration.ofDays(93)
         private val DB_MARGIN: Duration = Duration.ofDays(1)
+        private val ONE_DAY: Duration = Duration.ofDays(1)
     }
 }
