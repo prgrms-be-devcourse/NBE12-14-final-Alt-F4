@@ -1,18 +1,7 @@
 package com.team4.live_calendar.domain.room.entity
 
 import com.team4.live_calendar.domain.user.entity.User
-import jakarta.persistence.Column
-import jakarta.persistence.Entity
-import jakarta.persistence.EntityListeners
-import jakarta.persistence.EnumType
-import jakarta.persistence.Enumerated
-import jakarta.persistence.FetchType
-import jakarta.persistence.GeneratedValue
-import jakarta.persistence.GenerationType
-import jakarta.persistence.Id
-import jakarta.persistence.JoinColumn
-import jakarta.persistence.ManyToOne
-import jakarta.persistence.Table
+import jakarta.persistence.*
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
 import org.springframework.data.annotation.CreatedDate
@@ -69,6 +58,11 @@ class RoomInvitation protected constructor(
     @Column(name = "updated_at", nullable = false)
     lateinit var updatedAt: Instant
         protected set
+
+    fun accept(now: Instant) {
+        status = RoomInvitationStatus.ACCEPTED
+        respondedAt = now
+    }
 
     companion object {
         fun create(room: SchedulingRoom, inviter: User, invitee: User): RoomInvitation =

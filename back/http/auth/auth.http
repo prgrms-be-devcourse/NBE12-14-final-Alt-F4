@@ -58,6 +58,26 @@ Content-Type: application/json
   "nickname": "test"
 }
 
+### 닉네임에 한글·영문·숫자 외의 문자 (400 INVALID_INPUT) - #, 공백, 특수문자, 이모지, 자모 모두 같음
+POST {{baseUrl}}/api/v1/auth/signup
+Content-Type: application/json
+
+{
+  "email": "nickname@mail.com",
+  "password": "Passw0rd!",
+  "nickname": "모임#방장"
+}
+
+### 닉네임이 2자 미만 (400 INVALID_INPUT) - 20자 초과도 같음
+POST {{baseUrl}}/api/v1/auth/signup
+Content-Type: application/json
+
+{
+  "email": "short-nick@mail.com",
+  "password": "Passw0rd!",
+  "nickname": "가"
+}
+
 ### GET은 허용되지 않음 (401)
 GET {{baseUrl}}/api/v1/auth/signup
 
