@@ -8,10 +8,13 @@ import com.team4.live_calendar.domain.calendar.dto.GroupCategoryResponse
 import com.team4.live_calendar.domain.calendar.entity.CalendarGroup
 import com.team4.live_calendar.domain.calendar.repository.CalendarGroupRepository
 import com.team4.live_calendar.domain.calendar.repository.SubscribeRepository
+import com.team4.live_calendar.domain.category.repository.CategoryOptionRepository
 import com.team4.live_calendar.domain.category.repository.EventCategoryRepository
 import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
+import com.team4.live_calendar.global.websocket.DisplayChangedEvent
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -24,10 +27,14 @@ class CalendarGroupService(
     private val subscribeRepository: SubscribeRepository,
     private val userRepository: UserRepository,
     private val eventCategoryRepository: EventCategoryRepository,
+    private val categoryOptionRepository: CategoryOptionRepository,
+    // 내 그룹이 바뀌면 내 다른 기기에 알린다 (커밋 뒤 SyncSignalListener가 표시 신호로 보낸다)
+    private val eventPublisher: ApplicationEventPublisher,
 ) {
 
-    // 내 그룹과 그 안의 내 캘린더, 캘린더마다 그 캘린더의 카테고리
-    // 쿼리는 그룹 한 번, 이용 관계 + 캘린더 한 번, 카테고리 한 번 (캘린더가 없으면 카테고리 쿼리는 하지 않는다)
+    // 내 그룹과 그 안의 내 캘린더, 캘린더마다 그 캘린더의 카테고리 (내가 숨긴 카테고리는 isVisible=false)
+    // 쿼리는 그룹 한 번, 이용 관계 + 캘린더 한 번, 카테고리 한 번, 내가 숨긴 카테고리 한 번
+    // (캘린더가 없으면 카테고리 쿼리 두 개는 하지 않는다)
     fun findMyGroups(userId: Long): List<CalendarGroupWithCalendarsResponse> {
         val groups = calendarGroupRepository.findAllByUserIdOrdered(userId)
         val subscribes = subscribeRepository.findAllWithCalendarByUserId(userId)
@@ -35,8 +42,10 @@ class CalendarGroupService(
         val categoriesByCalendarId = if (subscribes.isEmpty()) {
             emptyMap()
         } else {
+            // 한 회원은 한 캘린더에 이용 관계가 하나라, 카테고리 ID만으로 내 숨김인지 알 수 있다
+            val hiddenCategoryIds = categoryOptionRepository.findHiddenCategoryIds(subscribes.map { requireNotNull(it.id) }).toSet()
             eventCategoryRepository.findAllByCalendarIdInOrderByIdAsc(subscribes.map { requireNotNull(it.calendar.id) })
-                .groupBy({ it.calendar.id }, { GroupCategoryResponse.from(it) })
+                .groupBy({ it.calendar.id }, { GroupCategoryResponse.from(it, isVisible = it.id !in hiddenCategoryIds) })
         }
         // 지연 로딩 프록시의 id(group.id)는 쿼리를 더 만들지 않는다
         // 내 그룹 목록에 없는 그룹을 가리키는 이용 관계는 설계상 생기지 않으며, 생기더라도 응답에서 빠진다
@@ -53,12 +62,17 @@ class CalendarGroupService(
     fun create(userId: Long, request: CalendarGroupRequest): CalendarGroupResponse {
         val displayOrder = calendarGroupRepository.findMaxDisplayOrder(userId)?.plus(1) ?: 0
         val group = CalendarGroup.create(userRepository.getReferenceById(userId), request.name, displayOrder)
-        return CalendarGroupResponse.from(calendarGroupRepository.saveAndFlush(group))
+        val saved = calendarGroupRepository.saveAndFlush(group)
+        // 공유 링크 구독이 새 그룹을 만들 때도 여기를 거쳐 한 번 알린다
+        // 이미 있는 그룹에 넣으면 여기를 거치지 않아 알리지 않는다 (구독 담당 코드, 팀 알림 대상)
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
+        return CalendarGroupResponse.from(saved)
     }
 
     @Transactional
     fun rename(userId: Long, groupId: Long, request: CalendarGroupRequest): CalendarGroupResponse {
         val group = findMyGroup(userId, groupId)
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         group.rename(request.name)
         return CalendarGroupResponse.from(calendarGroupRepository.saveAndFlush(group))
     }
@@ -71,6 +85,7 @@ class CalendarGroupService(
         if (subscribeRepository.existsByGroupId(groupId)) {
             throw BusinessException(ErrorCode.GROUP_NOT_EMPTY)
         }
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         calendarGroupRepository.delete(group)
     }
 

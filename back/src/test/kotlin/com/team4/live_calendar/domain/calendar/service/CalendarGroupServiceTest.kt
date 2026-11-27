@@ -262,14 +262,17 @@ class CalendarGroupServiceTest(
     }
 
     @Test
-    fun `그룹과 캘린더와 카테고리가 많아도 조회 쿼리는 세 번이다`() {
-        // given: 그룹 3개에 캘린더 2개씩, 캘린더마다 카테고리 2개씩
+    fun `그룹과 캘린더와 카테고리가 많아도 조회 쿼리는 네 번이다`() {
+        // given: 그룹 3개에 캘린더 2개씩, 캘린더마다 카테고리 2개씩, 캘린더마다 내가 숨긴 카테고리 1개씩
         repeat(3) { i ->
             val group = group(me, "그룹 $i", i)
             repeat(2) { j ->
                 val calendar = calendar("캘린더 $i-$j")
-                place(me, group, calendar, CalendarRole.OWNER)
-                repeat(2) { k -> persist(EventCategory.create(calendar, "카테고리 $i-$j-$k", null)) }
+                val subscribe = place(me, group, calendar, CalendarRole.OWNER)
+                repeat(2) { k ->
+                    val category = persist(EventCategory.create(calendar, "카테고리 $i-$j-$k", null))
+                    if (k == 0) persist(CategoryOption.create(subscribe, category, calendar, isVisible = false))
+                }
             }
         }
         // 직접 저장한 엔티티가 영속성 컨텍스트에 남아 있으면 지연 로딩 쿼리가 안 보이므로 비운다
@@ -284,10 +287,11 @@ class CalendarGroupServiceTest(
             // when
             val result = calendarGroupService.findMyGroups(me.id!!)
 
-            // then: 그룹 한 번, 이용 관계 + 캘린더 한 번, 카테고리 한 번
+            // then: 그룹 한 번, 이용 관계 + 캘린더 한 번, 카테고리 한 번, 내가 숨긴 카테고리 한 번
             assertEquals(6, result.sumOf { it.calendars.size })
             assertEquals(12, result.sumOf { group -> group.calendars.sumOf { it.categories.size } })
-            assertEquals(3, statistics.prepareStatementCount)
+            assertEquals(6, result.sumOf { group -> group.calendars.sumOf { c -> c.categories.count { !it.isVisible } } })
+            assertEquals(4, statistics.prepareStatementCount)
         } finally {
             statistics.isStatisticsEnabled = wasEnabled
         }

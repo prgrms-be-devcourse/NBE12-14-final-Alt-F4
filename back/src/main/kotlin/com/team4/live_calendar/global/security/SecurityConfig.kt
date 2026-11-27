@@ -48,6 +48,9 @@ class SecurityConfig(
                 authorize("/swagger-ui/**", permitAll)
                 authorize("/v3/api-docs/**", permitAll)
 
+                // WebSocket 연결 입구: 브라우저는 여기에 토큰 헤더를 못 붙여서, 인증은 STOMP CONNECT에서 한다
+                authorize("/ws", permitAll)
+
                 authorize(anyRequest, authenticated)
             }
 

@@ -1,16 +1,7 @@
 package com.team4.live_calendar.domain.room.entity
 
 import com.team4.live_calendar.domain.user.entity.User
-import jakarta.persistence.Column
-import jakarta.persistence.Entity
-import jakarta.persistence.EntityListeners
-import jakarta.persistence.FetchType
-import jakarta.persistence.GeneratedValue
-import jakarta.persistence.GenerationType
-import jakarta.persistence.Id
-import jakarta.persistence.JoinColumn
-import jakarta.persistence.ManyToOne
-import jakarta.persistence.Table
+import jakarta.persistence.*
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
 import java.time.Instant
@@ -18,7 +9,11 @@ import java.time.Instant
 // 조율방 초대 링크 (토큰 원문은 저장하지 않고 SHA-256 해시만 저장)
 @Entity
 @EntityListeners(AuditingEntityListener::class)
-@Table(name = "room_invite_links")
+@Table(
+    name = "room_invite_links",
+    // 링크 토큰으로 방을 찾으므로 해시가 겹치면 안 된다 (조회 인덱스도 같이 생긴다)
+    uniqueConstraints = [UniqueConstraint(name = "uk_room_invite_links_token_hash", columnNames = ["token_hash"])],
+)
 class RoomInviteLink protected constructor(
     room: SchedulingRoom,
     user: User,
@@ -53,6 +48,11 @@ class RoomInviteLink protected constructor(
     lateinit var createdAt: Instant
         protected set
 
+    // 폐기한 링크는 지우지 않고 시각만 남긴다 (누가 언제 만든 링크였는지 기록)
+    fun revoke(now: Instant) {
+        if (revokedAt == null) revokedAt = now
+    }
+    
     companion object {
         fun create(room: SchedulingRoom, user: User, tokenHash: String): RoomInviteLink =
             RoomInviteLink(room = room, user = user, tokenHash = tokenHash)

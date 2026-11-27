@@ -9,7 +9,6 @@ import com.team4.live_calendar.domain.event.dto.EventCreateRequest
 import com.team4.live_calendar.domain.event.dto.EventResponse
 import com.team4.live_calendar.domain.event.dto.EventUpdateRequest
 import com.team4.live_calendar.domain.event.dto.RecurrenceScope
-import com.team4.live_calendar.domain.event.entity.EventException
 import com.team4.live_calendar.domain.event.entity.EventExceptionType
 import com.team4.live_calendar.domain.event.entity.EventOption
 import com.team4.live_calendar.domain.event.repository.EventExceptionRepository
@@ -107,6 +106,7 @@ class EventRecurrenceScopeServiceTest(
         isAllDay: Boolean = false,
         categoryId: Long? = null,
         timezone: String? = null,
+        version: Long = 0,
     ) = EventUpdateRequest(
         categoryId = categoryId,
         title = title,
@@ -119,9 +119,10 @@ class EventRecurrenceScopeServiceTest(
         endDate = if (isAllDay) LocalDate.parse(end.take(10)) else null,
         timezone = timezone,
         rrule = rrule,
+        version = version,
     )
 
-    private fun allDayUpdate(date: String, title: String) = EventUpdateRequest(
+    private fun allDayUpdate(date: String, title: String, timezone: String? = null, version: Long = 0) = EventUpdateRequest(
         categoryId = null,
         title = title,
         description = null,
@@ -129,7 +130,9 @@ class EventRecurrenceScopeServiceTest(
         isAllDay = true,
         startDate = LocalDate.parse(date),
         endDate = LocalDate.parse(date),
+        timezone = timezone,
         rrule = "FREQ=DAILY;COUNT=5",
+        version = version,
     )
 
     private fun updateThis(event: EventResponse, occurrence: OffsetDateTime, request: EventUpdateRequest) =
@@ -180,10 +183,10 @@ class EventRecurrenceScopeServiceTest(
     fun `같은 회차를 두 번 수정하면 예외는 한 줄이고 마지막 값이 남는다`() {
         // given
         val event = createWeekly()
-        updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T10:00", "2026-11-23T11:00", title = "첫 수정"))
+        val first = updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T10:00", "2026-11-23T11:00", title = "첫 수정"))
 
         // when
-        updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T12:00", "2026-11-23T13:00", title = "두 번째 수정"))
+        updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T12:00", "2026-11-23T13:00", title = "두 번째 수정", version = first.version))
 
         // then
         val exceptions = exceptionsOf(event)
@@ -196,35 +199,13 @@ class EventRecurrenceScopeServiceTest(
     fun `이 일정만 수정한 응답의 updatedAt은 이번 수정 시각이다`() {
         // given
         val event = createWeekly()
-        updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T10:00", "2026-11-23T11:00", title = "첫 수정"))
+        val first = updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T10:00", "2026-11-23T11:00", title = "첫 수정"))
 
         // when: 같은 회차를 다시 고친다 (기존 예외를 고치는 경우)
-        val response = updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T12:00", "2026-11-23T13:00"))
+        val response = updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T12:00", "2026-11-23T13:00", version = first.version))
 
         // then
         assertEquals(exceptionsOf(event).single().updatedAt, response.updatedAt)
-    }
-
-    @Test
-    fun `같은 회차에 예외가 두 줄 생겨도 이 일정만 수정과 조회가 된다`() {
-        // given: 동시 요청으로 같은 회차에 예외가 두 줄 생긴 상황
-        val event = createWeekly()
-        val seriesRef = eventRepository.getReferenceById(event.id)
-        val recurrenceId = Instant.parse("2026-11-22T23:00:00Z")
-        repeat(2) {
-            eventExceptionRepository.save(
-                EventException.create(
-                    seriesRef, recurrenceId, EventExceptionType.MODIFIED, "중복", null, null,
-                    Instant.parse("2026-11-24T23:00:00Z"), Instant.parse("2026-11-25T00:00:00Z"),
-                ),
-            )
-        }
-
-        // when
-        updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-25T08:00", "2026-11-25T09:00", title = "고친 회의"))
-
-        // then: 500 없이 수정되고, 옮긴 회차는 한 번만 나온다
-        assertEquals(1, findKst("2026-11-25", "2026-11-26").size)
     }
 
     @Test
@@ -460,7 +441,7 @@ class EventRecurrenceScopeServiceTest(
 
         // then: 종일 여부를 바꾼 요청이어도 지운 회차 검사가 먼저다
         assertErrorCode(ErrorCode.OCCURRENCE_NOT_FOUND) {
-            updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T00:00", "2026-11-23T00:00", isAllDay = true))
+            updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T00:00", "2026-11-23T00:00", isAllDay = true, version = 1))
         }
         assertErrorCode(ErrorCode.OCCURRENCE_NOT_FOUND) { deleteThis(event, kst("2026-11-23T08:00")) }
     }
@@ -509,7 +490,7 @@ class EventRecurrenceScopeServiceTest(
         deleteThis(event, kst("2026-11-23T08:00"))
 
         // when: 반복 전체를 한 시간 늦춘다
-        eventService.update(owner.id!!, event.id, timedUpdate("2026-11-16T09:00", "2026-11-16T10:00"), RecurrenceScope.ALL)
+        eventService.update(owner.id!!, event.id, timedUpdate("2026-11-16T09:00", "2026-11-16T10:00", version = 1), RecurrenceScope.ALL)
 
         // then
         assertTrue(exceptionsOf(event).isEmpty())
@@ -520,10 +501,14 @@ class EventRecurrenceScopeServiceTest(
     fun `전체 수정으로 제목만 바꾸면 예외가 남는다`() {
         // given
         val event = createWeekly()
-        updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-25T08:00", "2026-11-25T09:00", title = "옮긴 회의"))
+        val moved = updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-25T08:00", "2026-11-25T09:00", title = "옮긴 회의"))
 
         // when
-        eventService.update(owner.id!!, event.id, timedUpdate("2026-11-16T08:00", "2026-11-16T09:00", title = "새 이름"), RecurrenceScope.ALL)
+        eventService.update(
+            owner.id!!, event.id,
+            timedUpdate("2026-11-16T08:00", "2026-11-16T09:00", title = "새 이름", version = moved.version),
+            RecurrenceScope.ALL,
+        )
 
         // then
         assertEquals(1, exceptionsOf(event).size)
@@ -539,12 +524,47 @@ class EventRecurrenceScopeServiceTest(
         // when: 소문자, 순서가 다른 같은 규칙
         eventService.update(
             owner.id!!, event.id,
-            timedUpdate("2026-11-16T08:00", "2026-11-16T09:00", rrule = "byday=MO;freq=weekly"),
+            timedUpdate("2026-11-16T08:00", "2026-11-16T09:00", rrule = "byday=MO;freq=weekly", version = 1),
             RecurrenceScope.ALL,
         )
 
         // then
         assertEquals(1, exceptionsOf(event).size)
         assertEquals(2, findKst("2026-11-16", "2026-12-01").size)
+    }
+
+    @Test
+    fun `종일 반복 일정을 전체 수정으로 시간대만 바꾸면 예외가 남는다`() {
+        // given: 11/16 ~ 11/20 매일, 11/17 회차만 이름을 바꿈
+        val event = createAllDayDaily(timezone = "Asia/Seoul")
+        val modified = updateThis(event, OffsetDateTime.parse("2026-11-17T00:00:00Z"), allDayUpdate("2026-11-17", "바뀐 종일"))
+
+        // when: 종일 회차는 UTC 날짜로 펼치므로 시간대만 바꿔도 회차는 그대로다
+        eventService.update(
+            owner.id!!, event.id,
+            allDayUpdate("2026-11-16", "종일", timezone = "America/New_York", version = modified.version),
+            RecurrenceScope.ALL,
+        )
+
+        // then
+        assertEquals(1, exceptionsOf(event).size)
+        assertEquals("바뀐 종일", findKst("2026-11-16", "2026-11-21")[1].title)
+    }
+
+    @Test
+    fun `시간 반복 일정을 전체 수정으로 시간대만 바꾸면 예외가 지워진다`() {
+        // given: 11/23 회차만 이름을 바꿈
+        val event = createWeekly()
+        val modified = updateThis(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T08:00", "2026-11-23T09:00", title = "바뀐 회의"))
+
+        // when: 시각은 그대로 두고 시간대만 바꾼다 (도쿄는 한국과 같은 시각이라 월요일 그대로). 시간 일정은 시간대가 회차 계산 기준이라 예외를 지운다
+        eventService.update(
+            owner.id!!, event.id,
+            timedUpdate("2026-11-16T08:00", "2026-11-16T09:00", timezone = "Asia/Tokyo", version = modified.version),
+            RecurrenceScope.ALL,
+        )
+
+        // then
+        assertTrue(exceptionsOf(event).isEmpty())
     }
 }

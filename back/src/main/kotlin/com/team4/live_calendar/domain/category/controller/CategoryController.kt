@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
@@ -46,4 +47,20 @@ class CategoryController(
         @CurrentUserId userId: Long,
         @PathVariable id: Long,
     ) = categoryService.delete(userId, id)
+
+    // 내 화면에서만 이 카테고리의 일정 숨기기 (편집 권한이 없어도 된다). 이미 숨겼어도 204
+    @PutMapping("/{id}/hidden")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun hide(
+        @CurrentUserId userId: Long,
+        @PathVariable id: Long,
+    ) = categoryService.hide(userId, id)
+
+    // 숨긴 카테고리 다시 보이기. 숨긴 적 없어도 204
+    @DeleteMapping("/{id}/hidden")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun show(
+        @CurrentUserId userId: Long,
+        @PathVariable id: Long,
+    ) = categoryService.show(userId, id)
 }

@@ -12,6 +12,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
@@ -20,7 +21,15 @@ import java.time.Instant
 // 이용자별 카테고리 설정: 표시 여부, 내 색 (calendar는 원본 카테고리와 같은 캘린더인지 검증용)
 @Entity
 @EntityListeners(AuditingEntityListener::class)
-@Table(name = "category_options")
+@Table(
+    name = "category_options",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uk_category_options_subscribe_category",
+            columnNames = ["subscribe_id", "category_id"],
+        ),
+    ],
+)
 class CategoryOption protected constructor(
     subscribe: Subscribe,
     category: EventCategory,
@@ -53,7 +62,7 @@ class CategoryOption protected constructor(
     var isVisible: Boolean = isVisible
         protected set
 
-    // 내 카테고리 색 (CAL-007 표시·숨김 작업에서 쓴다)
+    // 내 카테고리 색 (아직 쓰지 않는다, 고도화)
     @Column(name = "color", length = 30)
     var color: String? = color
         protected set
@@ -67,6 +76,11 @@ class CategoryOption protected constructor(
     @Column(name = "updated_at", nullable = false)
     lateinit var updatedAt: Instant
         protected set
+
+    // 내 화면에서 숨긴다 (줄이 보임으로 남아 있던 경우. 지금은 그런 줄을 만드는 곳이 없다)
+    fun hide() {
+        isVisible = false
+    }
 
     companion object {
         fun create(

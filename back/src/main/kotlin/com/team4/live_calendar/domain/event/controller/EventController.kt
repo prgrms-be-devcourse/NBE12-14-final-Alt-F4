@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -46,6 +47,28 @@ class EventController(
         @RequestParam(required = false) timezone: String?,
     ): List<EventResponse> = eventService.findInRange(userId, from, to, calendarIds, timezone)
 
+    // 내가 숨긴 일정 목록 (반복 일정은 시리즈 값 그대로)
+    @GetMapping("/hidden")
+    fun findHidden(
+        @CurrentUserId userId: Long,
+    ): List<EventResponse> = eventService.findHidden(userId)
+
+    // 내 화면에서만 숨기기 (반복 일정은 시리즈 전체). 이미 숨겼어도 204
+    @PutMapping("/{id}/hidden")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun hide(
+        @CurrentUserId userId: Long,
+        @PathVariable id: Long,
+    ) = eventService.hide(userId, id)
+
+    // 숨긴 일정 다시 보이기. 숨긴 적 없어도 204
+    @DeleteMapping("/{id}/hidden")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun show(
+        @CurrentUserId userId: Long,
+        @PathVariable id: Long,
+    ) = eventService.show(userId, id)
+
     @GetMapping("/{id}")
     fun get(
         @CurrentUserId userId: Long,
@@ -54,6 +77,7 @@ class EventController(
 
     // 반복 일정은 scope 필수 (THIS: 이 일정만, THIS_AND_FOLLOWING: 이 일정과 이후, ALL: 모든 반복 일정)
     // THIS·THIS_AND_FOLLOWING은 occurrenceStart에 기간 조회 응답의 occurrenceStart(원래 회차 시작)를 그대로 보낸다
+    // 본문의 version이 지금 일정과 다르면 409 EVENT_VERSION_CONFLICT (다른 곳에서 먼저 수정함)
     @PatchMapping("/{id}")
     fun update(
         @CurrentUserId userId: Long,

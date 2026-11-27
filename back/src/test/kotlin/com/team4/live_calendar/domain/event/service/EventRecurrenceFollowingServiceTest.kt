@@ -109,6 +109,7 @@ class EventRecurrenceFollowingServiceTest(
         title: String = "주간 회의",
         rrule: String? = "FREQ=WEEKLY;BYDAY=MO",
         timezone: String? = null,
+        version: Long = 0,
     ) = EventUpdateRequest(
         categoryId = null,
         title = title,
@@ -118,9 +119,10 @@ class EventRecurrenceFollowingServiceTest(
         endAt = kst(end),
         timezone = timezone,
         rrule = rrule,
+        version = version,
     )
 
-    private fun allDayUpdate(date: String, rrule: String?, title: String = "새 종일") = EventUpdateRequest(
+    private fun allDayUpdate(date: String, rrule: String?, title: String = "새 종일", version: Long = 0) = EventUpdateRequest(
         categoryId = null,
         title = title,
         description = null,
@@ -129,6 +131,7 @@ class EventRecurrenceFollowingServiceTest(
         startDate = LocalDate.parse(date),
         endDate = LocalDate.parse(date),
         rrule = rrule,
+        version = version,
     )
 
     private fun updateFollowing(event: EventResponse, occurrence: OffsetDateTime?, request: EventUpdateRequest, userId: Long = owner.id!!) =
@@ -244,13 +247,13 @@ class EventRecurrenceFollowingServiceTest(
     fun `옮긴 회차에서 이후 수정하면 원래 회차 시각 기준으로 잘리고 옮긴 예외는 지워진다`() {
         // given: 11/23 회차를 11/25로 옮김
         val event = createWeekly()
-        eventService.update(
+        val moved = eventService.update(
             owner.id!!, event.id, timedUpdate("2026-11-25T08:00", "2026-11-25T09:00", title = "옮긴 회의"),
             RecurrenceScope.THIS, kst("2026-11-23T08:00"),
         )
 
         // when: 옮긴 회차(원래 11/23)를 골라 이후 수정
-        updateFollowing(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T10:00", "2026-11-23T11:00", title = "새 회의"))
+        updateFollowing(event, kst("2026-11-23T08:00"), timedUpdate("2026-11-23T10:00", "2026-11-23T11:00", title = "새 회의", version = moved.version))
 
         // then: 11/23 전에 잘리고, 옮긴 회차는 사라진다
         assertTrue(seriesOf(event).rrule!!.contains("UNTIL=20261122T225959Z"))
@@ -317,7 +320,7 @@ class EventRecurrenceFollowingServiceTest(
 
         // when: 잘못된 반복 규칙
         assertErrorCode(ErrorCode.INVALID_RECURRENCE) {
-            updateFollowing(event, kst("2026-12-07T08:00"), timedUpdate("2026-12-07T10:00", "2026-12-07T11:00", rrule = "FREQ=HOURLY"))
+            updateFollowing(event, kst("2026-12-07T08:00"), timedUpdate("2026-12-07T10:00", "2026-12-07T11:00", rrule = "FREQ=HOURLY", version = 1))
         }
 
         // then
@@ -371,7 +374,7 @@ class EventRecurrenceFollowingServiceTest(
 
         // when: 11/30 회차부터인데 새 시작이 앞 회차(11/23 08:00~09:00) 도중
         assertErrorCode(ErrorCode.INVALID_INPUT) {
-            updateFollowing(event, kst("2026-11-30T08:00"), timedUpdate("2026-11-23T08:30", "2026-11-23T09:30"))
+            updateFollowing(event, kst("2026-11-30T08:00"), timedUpdate("2026-11-23T08:30", "2026-11-23T09:30", version = 1))
         }
 
         // then: 원래 반복을 자르지 않았고 새 일정도 없다
@@ -460,6 +463,7 @@ class EventRecurrenceFollowingServiceTest(
                 endAt = OffsetDateTime.parse("2026-11-18T00:00:00Z"),
                 timezone = "Asia/Seoul",
                 rrule = "FREQ=DAILY",
+                version = 0,
             ),
         )
 
@@ -495,6 +499,7 @@ class EventRecurrenceFollowingServiceTest(
             startDate = LocalDate.parse(start),
             endDate = LocalDate.parse(end),
             rrule = "FREQ=DAILY;COUNT=3",
+            version = 0,
         )
 
         // then: 앞 회차(11/17~18)는 11/19에 끝나지만, 고른 회차 날짜(11/18)부터는 원래 반복과 같은 모양이라 허용
@@ -526,7 +531,7 @@ class EventRecurrenceFollowingServiceTest(
         deleteThis(event, kst("2026-11-23T08:00"))
 
         // when
-        val response = updateFollowing(event, kst("2026-11-16T08:00"), timedUpdate("2026-11-16T08:00", "2026-11-16T09:00", title = "새 이름"))
+        val response = updateFollowing(event, kst("2026-11-16T08:00"), timedUpdate("2026-11-16T08:00", "2026-11-16T09:00", title = "새 이름", version = 1))
 
         // then: 같은 일정, 예외 유지
         assertEquals(event.id, response.id)
@@ -542,7 +547,7 @@ class EventRecurrenceFollowingServiceTest(
         deleteThis(event, kst("2026-11-23T08:00"))
 
         // when
-        val response = updateFollowing(event, kst("2026-11-16T08:00"), timedUpdate("2026-11-16T09:00", "2026-11-16T10:00"))
+        val response = updateFollowing(event, kst("2026-11-16T08:00"), timedUpdate("2026-11-16T09:00", "2026-11-16T10:00", version = 1))
 
         // then
         assertEquals(event.id, response.id)

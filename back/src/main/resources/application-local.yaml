@@ -18,6 +18,11 @@ app:
   auth:
     cookie:
       secure: false
+  # 로컬 전용 값. 공개 저장소에 올라가므로 운영에는 다른 값을 환경변수로 넣는다
+  sqids:
+    room-alphabet: T09FCJM2BH163XWVAGRQNZ5PSD4YKE87
+    user-alphabet: JZ1EVH0MTQG73RNS895DWKB6FAP2YX4C
+    share-alphabet: 7JX8KY9MZAN0BP1CQ2DR3ES4FT5GV6HW
 
 logging:
   level:

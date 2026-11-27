@@ -1,6 +1,7 @@
 package com.team4.live_calendar.domain.calendar.service
 
 import com.team4.live_calendar.domain.calendar.dto.CalendarCreateRequest
+import com.team4.live_calendar.domain.calendar.dto.CalendarDisplayRequest
 import com.team4.live_calendar.domain.calendar.dto.CalendarGroupMoveRequest
 import com.team4.live_calendar.domain.calendar.dto.CalendarResponse
 import com.team4.live_calendar.domain.calendar.dto.CalendarUpdateRequest
@@ -24,14 +25,18 @@ import com.team4.live_calendar.domain.share.repository.ShareCalendarConnectionRe
 import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
+import com.team4.live_calendar.global.websocket.CalendarChangedEvent
+import com.team4.live_calendar.global.websocket.DisplayChangedEvent
+import com.team4.live_calendar.global.websocket.SyncType
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.DateTimeException
 import java.time.ZoneId
 
-// 원본 캘린더 생성·상세·수정·삭제와 내 그룹 옮기기
-// 누가 캘린더를 어떻게 쓰는지(역할, 내 그룹)는 이용 관계(subscribes)에 있다
+// 원본 캘린더 생성·상세·수정·삭제와 내 그룹 옮기기, 내 화면 표시 설정(표시 여부·내 색)
+// 누가 캘린더를 어떻게 쓰는지(역할, 내 그룹, 표시 여부, 내 색)는 이용 관계(subscribes)에 있다
 // 권한 검사와 시간대 검증은 일정 API(EventService)와 같은 규칙이다. 일정 파일을 건드리지 않으려고 여기에 따로 둔다
 @Service
 @Transactional(readOnly = true)
@@ -51,6 +56,8 @@ class CalendarService(
     private val eventCategoryRepository: EventCategoryRepository,
     private val calendarInvitationRepository: CalendarInvitationRepository,
     private val shareCalendarConnectionRepository: ShareCalendarConnectionRepository,
+    // 바뀐 사실만 이벤트로 알리고, 커밋 뒤 SyncSignalListener가 STOMP 신호로 보낸다
+    private val eventPublisher: ApplicationEventPublisher,
 ) {
 
     // 캘린더와 만든 사람의 OWNER 이용 관계를 함께 만든다
@@ -71,7 +78,10 @@ class CalendarService(
             role = CalendarRole.OWNER,
             color = null,
         )
-        return CalendarResponse.from(subscribeRepository.save(owner))
+        val saved = subscribeRepository.save(owner)
+        // 새 캘린더는 아직 구독자가 없어 캘린더 신호는 보내지 않고, 내 다른 기기에만 알린다
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
+        return CalendarResponse.from(saved)
     }
 
     // 이용 관계가 있으면 역할과 상관없이 볼 수 있다 (SUBSCRIBER 포함)
@@ -84,6 +94,7 @@ class CalendarService(
     fun update(userId: Long, calendarId: Long, request: CalendarUpdateRequest): CalendarResponse {
         val calendar = findCalendar(calendarId)
         val subscribe = checkOwner(findMySubscribe(userId, calendar))
+        eventPublisher.publishEvent(CalendarChangedEvent(SyncType.CALENDAR_UPDATED, calendarId))
         val timezone = givenTimezone(request.timezone) ?: calendar.timezone
         calendar.update(request.name, request.description, request.color, timezone)
         return CalendarResponse.from(subscribe)
@@ -93,20 +104,36 @@ class CalendarService(
     @Transactional
     fun moveGroup(userId: Long, calendarId: Long, request: CalendarGroupMoveRequest): CalendarResponse {
         val subscribe = findMySubscribe(userId, findCalendar(calendarId))
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         subscribe.moveTo(findMyGroup(userId, requireNotNull(request.groupId)))
         return CalendarResponse.from(subscribe)
+    }
+
+    // 내 화면에서 이 캘린더를 보일지와 내 색 (모든 칸 보내기, color가 null이면 원본 색)
+    // 역할과 상관없이 이용 관계가 있으면 바꿀 수 있다. 원본과 다른 사람의 화면은 그대로
+    @Transactional
+    fun changeDisplay(userId: Long, calendarId: Long, request: CalendarDisplayRequest) {
+        val subscribe = findMySubscribe(userId, findCalendar(calendarId))
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
+        subscribe.changeDisplay(requireNotNull(request.isVisible), request.color)
     }
 
     // OWNER만. 캘린더와 연결 데이터를 FK 순서대로 모두 지운다 (다른 사람의 이용 관계·구독 포함)
     // 조율방이 공통 캘린더로 쓰면 409로 막고 아무것도 지우지 않는다. 알림은 남기고 캘린더 칸만 비운다
     // 엔티티를 하나씩 불러 지우지 않고 캘린더 ID로 한 번에 지워서, 일정이 많아도 쿼리 수가 같다
-    // 확인과 삭제 사이에 다른 요청이 조율방을 만들거나 일정을 넣으면 FK 때문에 실패한다 (드물어서 막지 않음)
+    // 일정 수정과 겹치면 일정 줄 잠금으로 차례로 처리한다. 확인과 삭제 사이에 다른 요청이 조율방이나 새 일정을 만들면
+    // FK 때문에 실패할 수 있다 (드물어서 막지 않음)
     @Transactional
     fun delete(userId: Long, calendarId: Long) {
         checkOwner(findMySubscribe(userId, findCalendar(calendarId)))
         if (schedulingRoomRepository.existsByCalendarId(calendarId)) {
             throw BusinessException(ErrorCode.CALENDAR_IN_USE_BY_ROOM)
         }
+        // 일정 수정이 일정 줄을 먼저 잠그므로, 삭제도 첫 삭제 전에 일정 줄을 같은 순서(id 순)로 잠가 데드락을 막는다
+        // 권한 확인 뒤에 잠가 권한 없는 요청이 남의 일정 줄을 잠그지 못하게 한다
+        eventRepository.lockAllInCalendar(calendarId)
+        // 409로 막힌 삭제는 알리지 않는다. 지운 뒤에도 브로커 구독은 남아 있어 구독자가 받는다
+        eventPublisher.publishEvent(CalendarChangedEvent(SyncType.CALENDAR_DELETED, calendarId))
         notificationRepository.clearCalendar(calendarId)
         eventExceptionRepository.deleteAllInCalendar(calendarId)
         eventOptionRepository.deleteAllInCalendar(calendarId)

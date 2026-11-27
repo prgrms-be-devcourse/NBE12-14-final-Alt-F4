@@ -2,6 +2,7 @@
 # ※ auth.http의 로그인 성공 요청을 먼저 실행하세요. 받은 accessToken을 Authorization 헤더로 보냅니다.
 # ※ 쿼리 파라미터의 시간에 +가 들어가면 공백으로 바뀌므로 UTC(Z)로 보내거나 %2B로 인코딩하세요.
 # ※ 수정은 모든 필드를 다시 보내는 방식이라, 반복 일정을 수정할 때 rrule을 빼면 반복이 해제됩니다. 기존 rrule을 같이 보내세요. timezone은 빼면 기존 값을 쓰지만, 일반·종일 일정을 처음 시간 반복으로 바꿀 때는 꼭 보내야 합니다.
+# ※ 수정 본문의 version은 필수입니다. 바로 앞 조회·수정 응답의 version을 그대로 보내세요 (예시는 0). 수정과 이 일정만·이후 삭제마다 1씩 오르고, 다르면 409 EVENT_VERSION_CONFLICT입니다.
 
 ### 시간 일정 생성 (201)
 POST {{baseUrl}}/api/v1/events
@@ -73,6 +74,7 @@ GET {{baseUrl}}/api/v1/events/999999
 Authorization: Bearer {{accessToken}}
 
 ### 수정 (200) - 모든 필드를 다시 보냄
+# version은 앞 조회·수정 응답의 값으로 바꿔 보냅니다
 PATCH {{baseUrl}}/api/v1/events/1
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
@@ -83,7 +85,8 @@ Content-Type: application/json
   "description": null,
   "location": null,
   "startAt": "2026-11-18T14:00:00+09:00",
-  "endAt": "2026-11-18T16:00:00+09:00"
+  "endAt": "2026-11-18T16:00:00+09:00",
+  "version": 0
 }
 
 ### 반복 일정 생성 (201) - 격주 월·수 한국 오전 10시, 12/31까지
@@ -132,6 +135,7 @@ Content-Type: application/json
 ### 반복 일정의 이 일정만 수정 (200) - 11/30(월) 회차만 오후 2시로 옮기고 제목 변경 (격주 월·수라 11/16, 11/18, 11/30, 12/2 …가 회차)
 # occurrenceStart에는 기간 조회 응답의 occurrenceStart(원래 회차 시작)를 그대로 보냅니다. +는 %2B로 인코딩
 # 이 일정만 수정에서는 제목·설명·장소·시간만 바뀝니다. 종일 여부·카테고리는 반복 일정과 같아야 하고 rrule, timezone은 무시합니다
+# version은 앞 조회·수정 응답의 값으로 바꿔 보냅니다
 PATCH {{baseUrl}}/api/v1/events/1?scope=THIS&occurrenceStart=2026-11-30T10:00:00%2B09:00
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
@@ -143,7 +147,8 @@ Content-Type: application/json
   "location": null,
   "startAt": "2026-11-30T14:00:00+09:00",
   "endAt": "2026-11-30T15:00:00+09:00",
-  "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;UNTIL=20261231T145959Z"
+  "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;UNTIL=20261231T145959Z",
+  "version": 0
 }
 
 ### 반복 일정의 이 일정만 삭제 (204) - 11/18(수) 회차만 삭제 (한국 10시 = UTC 01시)
@@ -158,6 +163,7 @@ Authorization: Bearer {{accessToken}}
 # 원래 반복은 12/28 전에 끝나고, 12/28부터는 새 일정(새 id)이 생깁니다. 응답의 id로 화면을 갱신하세요 (첫 회차를 고르면 원래 id)
 # 본문은 고른 회차부터의 새 일정 값입니다. 고른 회차보다 앞당겨도 되지만, 앞에 남는 마지막 회차가 끝나기 전에 시작하면 400입니다
 # COUNT가 있는 반복이면 남은 횟수는 프론트가 계산해서 rrule에 넣습니다. 숨김 설정과 조율방 공유는 새 일정에도 따라갑니다
+# version은 앞 조회·수정 응답의 값으로 바꿔 보냅니다
 PATCH {{baseUrl}}/api/v1/events/1?scope=THIS_AND_FOLLOWING&occurrenceStart=2026-12-28T10:00:00%2B09:00
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
@@ -170,11 +176,13 @@ Content-Type: application/json
   "startAt": "2026-12-28T15:00:00+09:00",
   "endAt": "2026-12-28T16:00:00+09:00",
   "timezone": "Asia/Seoul",
-  "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;UNTIL=20261231T145959Z"
+  "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;UNTIL=20261231T145959Z",
+  "version": 0
 }
 
 ### 이 일정과 이후 수정에서 앞 회차가 끝나기 전에 시작 (400 INVALID_INPUT) - 데이터는 바뀌지 않습니다
 # 12/16(수) 회차를 골랐으므로 앞에 남는 마지막 회차는 12/14(월) 10~11시입니다. 새 시작 12/14 10:30은 그보다 앞이라 거절됩니다
+# version은 앞 조회·수정 응답의 값으로 바꿔 보냅니다
 PATCH {{baseUrl}}/api/v1/events/1?scope=THIS_AND_FOLLOWING&occurrenceStart=2026-12-16T01:00:00Z
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
@@ -187,7 +195,8 @@ Content-Type: application/json
   "startAt": "2026-12-14T10:30:00+09:00",
   "endAt": "2026-12-14T11:30:00+09:00",
   "timezone": "Asia/Seoul",
-  "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;UNTIL=20261231T145959Z"
+  "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;UNTIL=20261231T145959Z",
+  "version": 0
 }
 
 ### 반복 일정의 이 일정과 이후 삭제 (204) - 12/14(월) 회차부터 반복 그만하기. 지난 회차는 그대로 남습니다
@@ -199,6 +208,7 @@ Authorization: Bearer {{accessToken}}
 # 반복 일정은 scope가 필요합니다 (없으면 400 RECURRENCE_SCOPE_REQUIRED)
 # scope=ALL의 본문은 클릭한 회차가 아니라 반복 일정 자체의 값(첫 회차 기준, GET /events/{id} 응답)입니다.
 # 회차의 시간을 보내면 반복의 시작이 그 회차로 옮겨지고, 이 일정만 수정·삭제한 회차도 원래대로 돌아갑니다
+# version은 앞 조회·수정 응답의 값으로 바꿔 보냅니다
 PATCH {{baseUrl}}/api/v1/events/1?scope=ALL
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
@@ -211,12 +221,30 @@ Content-Type: application/json
   "startAt": "2026-11-17T10:00:00+09:00",
   "endAt": "2026-11-17T11:00:00+09:00",
   "timezone": "Asia/Seoul",
-  "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH;UNTIL=20261231T145959Z"
+  "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH;UNTIL=20261231T145959Z",
+  "version": 0
 }
 
 ### 기간 조회, 보는 사람 시간대 지정 (200) - 한국 11월 한 달
 # 종일 일정을 timezone의 날짜로 비교합니다 (없으면 UTC). 반복 일정은 회차마다 하나씩 나오고 id는 같습니다
 GET {{baseUrl}}/api/v1/events?from=2026-10-31T15:00:00Z&to=2026-11-30T15:00:00Z&timezone=Asia/Seoul
+Authorization: Bearer {{accessToken}}
+
+### 내 화면에서 숨기기 (204) - 반복 일정은 시리즈 전체. 이미 숨겼어도 204
+# 원본과 다른 사람 화면은 그대로입니다. 이용 관계만 있으면 역할과 상관없이 숨길 수 있습니다
+PUT {{baseUrl}}/api/v1/events/1/hidden
+Authorization: Bearer {{accessToken}}
+
+### 기간 조회 (200) - 위에서 숨긴 일정은 나오지 않습니다
+GET {{baseUrl}}/api/v1/events?from=2026-11-17T15:00:00Z&to=2026-11-18T15:00:00Z
+Authorization: Bearer {{accessToken}}
+
+### 숨긴 일정 목록 (200) - 숨긴 캘린더의 일정도 나옵니다. 반복 일정은 회차로 펼치지 않고 시리즈 하나
+GET {{baseUrl}}/api/v1/events/hidden
+Authorization: Bearer {{accessToken}}
+
+### 숨긴 일정 다시 보이기 (204) - 내 숨김만 지웁니다. 숨긴 적 없어도 204
+DELETE {{baseUrl}}/api/v1/events/1/hidden
 Authorization: Bearer {{accessToken}}
 
 ### 삭제 (204) - 반복 일정은 scope=ALL이면 지난 회차까지 모두 삭제. 반복 없는 일정은 scope를 무시합니다

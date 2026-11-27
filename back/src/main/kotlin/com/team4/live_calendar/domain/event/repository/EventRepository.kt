@@ -1,12 +1,24 @@
 package com.team4.live_calendar.domain.event.repository
 
 import com.team4.live_calendar.domain.event.entity.Event
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import java.time.Instant
 
 interface EventRepository : JpaRepository<Event, Long> {
+
+    // 일정 수정·삭제: 일정 줄을 잠가 같은 일정의 동시 요청을 차례로 처리한다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select e from Event e where e.id = :id")
+    fun findForUpdate(id: Long): Event?
+
+    // 캘린더 삭제: 이 캘린더의 일정 줄을 id 순으로 잠근다 (일정 수정과 같은 순서로 잠가 데드락을 막는다)
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select e.id from Event e where e.calendar.id = :calendarId order by e.id")
+    fun lockAllInCalendar(calendarId: Long): List<Long>
 
     // [from, to) 기간과 조금이라도 겹치는 반복 없는 일정
     @Query(
@@ -39,8 +51,9 @@ interface EventRepository : JpaRepository<Event, Long> {
     fun deleteAllInCalendar(calendarId: Long): Int
 
     // 카테고리 삭제: 일정은 남기고 카테고리 칸만 비운다 (반복 일정 포함)
-    // 벌크 update라 Auditing을 거치지 않아 updated_at은 바뀌지 않는다
+    // 벌크 update라 Auditing을 거치지 않아 updated_at은 바뀌지 않는다. version은 올린다
+    // (열린 수정 폼이 엉뚱한 400 대신 409를 받도록)
     @Modifying
-    @Query("update Event e set e.category = null where e.category.id = :categoryId")
+    @Query("update Event e set e.category = null, e.version = e.version + 1 where e.category.id = :categoryId")
     fun clearCategory(categoryId: Long): Int
 }

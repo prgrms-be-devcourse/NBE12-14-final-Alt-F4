@@ -66,6 +66,36 @@ Content-Type: application/json
   "groupId": {{moveGroupId}}
 }
 
+### 내 화면에서 캘린더 끄기 (204) - 기간 조회에서 이 캘린더 일정이 빠집니다 (calendarIds로 골라도). 모든 칸 보내기
+# 내 이용 관계만 바뀌고 원본과 다른 사람 화면은 그대로입니다. 이용 관계만 있으면 역할과 상관없이 바꿀 수 있습니다
+PATCH {{baseUrl}}/api/v1/calendars/{{calendarId}}/display
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "isVisible": false,
+  "color": null
+}
+
+### 다시 켜고 내 색 정하기 (204) - 그룹 조회의 color·myColor가 내 색이 됩니다
+PATCH {{baseUrl}}/api/v1/calendars/{{calendarId}}/display
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "isVisible": true,
+  "color": "#16A34A"
+}
+
+### 내 색 지우기 (204) - color를 빼고 보내면 내 색이 지워지고 원본 색으로 보입니다 (myColor: null)
+PATCH {{baseUrl}}/api/v1/calendars/{{calendarId}}/display
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "isVisible": true
+}
+
 ### 캘린더 삭제 (204) - 일정·카테고리·다른 사람의 구독까지 같이 지워집니다. 조율방이 쓰는 캘린더는 409 CALENDAR_IN_USE_BY_ROOM
 DELETE {{baseUrl}}/api/v1/calendars/{{calendarId}}
 Authorization: Bearer {{accessToken}}

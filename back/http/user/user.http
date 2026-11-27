@@ -8,3 +8,21 @@ GET {{baseUrl}}/api/v1/users/me
 ### 깨진 토큰 (401)
 GET {{baseUrl}}/api/v1/users/me
 Authorization: Bearer invalid.token.value
+
+### 내 태그 저장 (200) - 초대받을 계정으로 로그인한 뒤 실행. 응답의 tag를 inviteeTag로 저장
+GET {{baseUrl}}/api/v1/users/me
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.global.set("inviteeTag", response.body.tag);
+%}
+
+### ※ 아래부터는 방장 계정으로 다시 로그인한 뒤 실행한다.
+
+### 태그로 회원 찾기 (200) - {tag, nickname} 한 명. 닉네임을 보고 맞는 사람인지 확인. 태그는 소문자로 보내도 된다
+GET {{baseUrl}}/api/v1/users/tags/{{inviteeTag}}
+Authorization: Bearer {{accessToken}}
+
+### 없는 태그 (404 USER_NOT_FOUND)
+GET {{baseUrl}}/api/v1/users/tags/UUUUUU
+Authorization: Bearer {{accessToken}}

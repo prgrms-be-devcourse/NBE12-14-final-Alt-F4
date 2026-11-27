@@ -1,0 +1,200 @@
+# 조율방 API 요청 예시
+# ※ auth.http의 로그인 성공 요청을 먼저 실행하세요. 받은 accessToken을 Authorization 헤더로 보냅니다.
+# ※ 날짜·시간은 timezone 기준 현지 값입니다. dailyEndTime이 dailyStartTime보다 이르면 다음 날 새벽까지 이어지는 범위입니다(예: 22:00~02:00).
+# ※ groupId는 calendar/group.http의 "그룹 생성"을 먼저 실행해서 저장된 값을 씁니다(공통 캘린더를 넣을 내 그룹).
+# ※ roomId는 숫자가 아니라 방 코드(Crockford Base32 6자 이상, 예: 4XK9TQ)입니다. 소문자로 보내도 됩니다.
+
+### 조율방 생성 (201) - 응답의 id(방 코드)를 roomId로 저장
+POST {{baseUrl}}/api/v1/rooms
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "친구 모임",
+  "startDate": "2026-11-24",
+  "endDate": "2026-11-28",
+  "dailyStartTime": "09:00",
+  "dailyEndTime": "18:00",
+  "timezone": "Asia/Seoul",
+  "groupId": {{groupId}}
+}
+
+> {%
+    client.global.set("roomId", response.body.id);
+%}
+
+### 내 조율방 목록 (200)
+GET {{baseUrl}}/api/v1/rooms
+Authorization: Bearer {{accessToken}}
+
+### 조율방 상세 (200)
+GET {{baseUrl}}/api/v1/rooms/{{roomId}}
+Authorization: Bearer {{accessToken}}
+
+### 못 읽는 방 코드면 404 ROOM_NOT_FOUND (없는 방·참여하지 않은 방도 같은 응답)
+GET {{baseUrl}}/api/v1/rooms/UUUUUU
+Authorization: Bearer {{accessToken}}
+
+### 기간이 거꾸로면 400 INVALID_ROOM_PERIOD
+POST {{baseUrl}}/api/v1/rooms
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "잘못된 방",
+  "startDate": "2026-11-28",
+  "endDate": "2026-11-24",
+  "dailyStartTime": "09:00",
+  "dailyEndTime": "18:00",
+  "timezone": "Asia/Seoul",
+  "groupId": {{groupId}}
+}
+
+### ===== 초대 링크 =====
+
+### 초대 링크 발급·재발급 (201, 방장) - 이전 링크는 무효가 된다
+POST {{baseUrl}}/api/v1/rooms/{{roomId}}/invite-links
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.global.set("inviteToken", response.body.token);
+%}
+
+### ※ 아래 두 요청은 다른 계정으로 확인한다: auth.http에서 두 번째 계정으로 가입·로그인하면 accessToken이 바뀐다.
+
+### 초대 확인 (200) - 참여하지 않는다
+GET {{baseUrl}}/api/v1/invite-links/{{inviteToken}}
+Authorization: Bearer {{accessToken}}
+
+### 초대 수락 (200) - 여러 번 보내도 참여는 한 번. groupId는 이 계정으로 group.http "그룹 생성"을 먼저 실행해서 저장한 값
+POST {{baseUrl}}/api/v1/invite-links/{{inviteToken}}/accept
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "groupId": {{groupId}}
+}
+
+### ※ 폐기는 방장 계정으로 다시 로그인한 뒤 보낸다. 폐기 후에는 위 확인·수락이 404 INVITE_LINK_NOT_FOUND가 된다(이미 참여한 회원은 그대로).
+
+### 초대 링크 폐기 (204, 방장)
+DELETE {{baseUrl}}/api/v1/rooms/{{roomId}}/invite-links
+Authorization: Bearer {{accessToken}}
+
+### ===== 회원 지정 초대 =====
+
+# ※ 순서: 계정 B로 로그인 → user.http "내 태그 저장" → 계정 A(방장)로 로그인 → user.http "태그로 회원 찾기" → 아래 회원 초대
+#        → 계정 B로 로그인 → 내가 받은 초대 → 초대 수락
+
+### 회원 초대 (201, 방장) - inviteeTag는 user.http의 "내 태그 저장"으로 저장
+POST {{baseUrl}}/api/v1/rooms/{{roomId}}/invitations
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "inviteeTag": "{{inviteeTag}}"
+}
+
+### 같은 회원을 다시 초대 (409 DUPLICATE_INVITATION) - 위 초대를 수락하기 전
+POST {{baseUrl}}/api/v1/rooms/{{roomId}}/invitations
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "inviteeTag": "{{inviteeTag}}"
+}
+
+### ※ 아래 두 요청은 초대받은 계정으로 로그인한 뒤 실행한다.
+
+### 내가 받은 초대 (200) - 대기 중이고 아직 참여하지 않은 방만
+GET {{baseUrl}}/api/v1/invitations
+Authorization: Bearer {{accessToken}}
+
+> {%
+    if (response.body.length > 0) client.global.set("invitationId", response.body[0].id);
+%}
+
+### 초대 수락 (200) - 두 번 보내도 200. groupId는 이 계정으로 group.http "그룹 생성"을 먼저 실행해서 저장한 값
+POST {{baseUrl}}/api/v1/invitations/{{invitationId}}/accept
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "groupId": {{groupId}}
+}
+
+### ===== 일정 공유 =====
+# ※ 방에 참여한 계정으로 실행한다. 조율 기간은 위 "조율방 생성"의 11/24~11/28(서울)이다.
+# ※ calendarId는 calendar.http "캘린더 생성"으로 저장한 내 캘린더 id다.
+
+### 공유할 내 일정 만들기 (201) - 조율 기간 안의 일정. 응답 id를 shareEventId로 저장
+POST {{baseUrl}}/api/v1/events
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "calendarId": {{calendarId}},
+  "categoryId": null,
+  "title": "개인 일정",
+  "description": null,
+  "location": null,
+  "startAt": "2026-11-25T10:00:00+09:00",
+  "endAt": "2026-11-25T11:00:00+09:00",
+  "timezone": "Asia/Seoul"
+}
+
+> {%
+    client.global.set("shareEventId", response.body.id);
+%}
+
+### 내 일정 공유 (201) - 여러 개를 한 번에 보낼 수 있고 모두 "시간만" 표시로 시작. 반복 일정은 반복 일정 id 하나만 보낸다
+POST {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "eventIds": [{{shareEventId}}]
+}
+
+> {%
+    client.global.set("sharedEventId", response.body[0].id);
+%}
+
+### 같은 일정을 다시 공유 (201) - 새로 만들지 않고 기존 공유를 그대로 돌려준다
+POST {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "eventIds": [{{shareEventId}}]
+}
+
+### 빈 목록 공유 (400 INVALID_INPUT)
+POST {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "eventIds": []
+}
+
+### 방의 공유 일정 (200) - 서울 11/24 00:00 ~ 12/1 00:00 주간. 내 공유에만 title·eventId가 온다
+GET {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events?from=2026-11-23T15:00:00Z&to=2026-11-30T15:00:00Z
+Authorization: Bearer {{accessToken}}
+
+### 조회 구간이 93일 초과 (400 INVALID_DATE_RANGE)
+GET {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events?from=2026-11-01T00:00:00Z&to=2027-03-01T00:00:00Z
+Authorization: Bearer {{accessToken}}
+
+### 표시 방식 변경 (200) - TIME_ONLY / CALENDAR_NAME_AND_TIME
+PATCH {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events/{{sharedEventId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "displayMode": "CALENDAR_NAME_AND_TIME"
+}
+
+### 공유 빼기 (204) - 내 공유만 뺄 수 있다
+DELETE {{baseUrl}}/api/v1/rooms/{{roomId}}/shared-events/{{sharedEventId}}
+Authorization: Bearer {{accessToken}}

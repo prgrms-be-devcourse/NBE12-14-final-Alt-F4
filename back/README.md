@@ -18,6 +18,7 @@ java 25, kotlin 2.3.21, Spring Boot 4.1.2
 | [`/v3/api-docs`](http://localhost:8080/v3/api-docs) | OpenAPI 명세를 JSON으로 제공합니다. |
 | [`/v3/api-docs.yaml`](http://localhost:8080/v3/api-docs.yaml) | 같은 OpenAPI 명세를 YAML로 제공합니다. |
 | [`localhost:3000`](http://localhost:3000/) | Grafana UI 진입점입니다. |
+| `ws://localhost:8080/ws` | 실시간 동기화 WebSocket(STOMP) 연결 주소입니다. 아래 [WebSocket 연결해 보기](#websocket-연결해-보기-브라우저-콘솔)를 참고합니다. |
 
 ## 스프링부트 실행 전 준비사항
 
@@ -118,6 +119,40 @@ IntelliJ에서 `LiveCalendarApplication`을 실행합니다. `local` 프로필�
 4. 자물쇠가 표시된 API를 실행합니다. 인증 API(`/api/v1/auth/*`)는 토큰 없이 호출됩니다.
 
 Access Token은 30분 뒤 만료됩니다. 그때는 `POST /api/v1/auth/refresh`로 새 토큰을 받아 다시 Authorize에 넣습니다(Refresh Token 쿠키는 브라우저가 자동으로 보냅니다).
+
+### WebSocket 연결해 보기 (브라우저 콘솔)
+
+일정이 바뀌었다는 신호를 받는 STOMP 연결입니다. 신호에는 내용이 없고, 신호를 받은 프론트가 API로 다시 조회합니다.
+
+| 항목 | 규칙 |
+|---|---|
+| 연결 | `ws://localhost:8080/ws`. HTTP 연결 단계는 토큰 없이 열리고, 인증은 STOMP `CONNECT` 프레임의 `Authorization` 헤더(`Bearer {Access Token}`)로 합니다 |
+| 구독 | `/topic/calendars/{calendarId}`만, 내가 이용하는 캘린더만 됩니다. 그 밖의 주소는 오류 없이 조용히 버려집니다 |
+| 보내기 | 클라이언트는 `/app/...`으로만 보낼 수 있습니다. `/topic/...`에 직접 보내면 버려집니다 |
+| 기타 | 하트비트 10초, 메시지 최대 8KB. 허용 Origin은 HTTP CORS와 같은 `app.cors.allowed-origins`입니다 |
+
+1. 앱을 실행하고 [`/actuator/health`](http://localhost:8080/actuator/health)를 엽니다. 같은 출처(`localhost:8080`)는 Origin 목록과 상관없이 연결됩니다.
+2. 개발자 도구 Console에서 아래를 실행합니다. 이메일·비밀번호·캘린더 ID는 내 값으로 바꿉니다(캘린더 ID는 `GET /api/v1/groups`에서 확인). 처음 붙여 넣을 때 크롬이 `allow pasting` 입력을 요구할 수 있습니다.
+
+```js
+const res = await fetch("/api/v1/auth/login", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: "내 이메일", password: "내 비밀번호" }),
+});
+const token = (await res.json()).accessToken;
+
+const ws = new WebSocket("ws://localhost:8080/ws");
+ws.onmessage = (e) => console.log(e.data);
+ws.onopen = () => {
+  ws.send(`CONNECT\naccept-version:1.2\nhost:localhost\nAuthorization:Bearer ${token}\n\n\0`);
+  ws.send(`SUBSCRIBE\nid:sub-0\ndestination:/topic/calendars/1\n\n\0`);
+};
+```
+
+3. `CONNECTED`와 `user-name:{내 회원 ID}`가 오면 성공입니다. 토큰이 없거나 틀리면 `ERROR`와 이유(`message:`)가 오고 연결이 닫힙니다.
+
+STOMP 프레임을 직접 쓸 때는 헤더 콜론 뒤에 공백을 넣지 않습니다(`Authorization:Bearer ...`). STOMP는 값의 공백을 지우지 않아서 `Authorization: Bearer ...`는 토큰이 없는 것으로 처리됩니다. 프론트 라이브러리(`@stomp/stompjs`)는 알아서 맞게 보냅니다.
 
 ### 테스트 실행
 

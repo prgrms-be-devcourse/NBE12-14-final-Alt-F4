@@ -10,6 +10,8 @@ import com.team4.live_calendar.domain.event.dto.EventUpdateRequest
 import com.team4.live_calendar.domain.event.entity.Event
 import com.team4.live_calendar.domain.event.entity.EventOption
 import com.team4.live_calendar.domain.event.service.EventService
+import com.team4.live_calendar.domain.notification.service.EventHistoryService
+import com.team4.live_calendar.domain.notification.service.NotificationOutboxService
 import com.team4.live_calendar.domain.user.entity.User
 import com.team4.live_calendar.global.config.JpaConfig
 import com.team4.live_calendar.global.exception.BusinessException
@@ -28,7 +30,8 @@ import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 @DataJpaTest
-@Import(JpaConfig::class, SubscribeService::class, EventService::class)
+@Import(JpaConfig::class, SubscribeService::class, CalendarGroupService::class, EventService::class,
+    EventHistoryService::class, NotificationOutboxService::class,)
 class SubscribeServiceTest(
     @Autowired private val service: SubscribeService,
     @Autowired private val em: EntityManager,

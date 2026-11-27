@@ -75,6 +75,10 @@ class Subscribe protected constructor(
     var isVisible: Boolean = true
         protected set
 
+    @Column(name = "notification_enabled", nullable = false)
+    var notificationEnabled: Boolean = true
+        protected set
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     lateinit var createdAt: Instant
@@ -88,6 +92,18 @@ class Subscribe protected constructor(
     // 내 화면에서 이 캘린더를 둘 그룹을 바꾼다 (원본·역할·다른 사람의 배치는 그대로)
     fun moveTo(group: CalendarGroup) {
         this.group = group
+    }
+
+    // 내 화면 표시 여부와 내 색 (color가 null이면 원본 색으로 보인다)
+    // 저장 때 모든 칸을 UPDATE하므로, 같은 사람이 그룹 옮기기와 거의 동시에 보내면 한쪽 값이 되돌아갈 수 있다 (드물어서 허용)
+    fun changeDisplay(isVisible: Boolean, color: String?) {
+        this.isVisible = isVisible
+        this.color = color
+    }
+
+    // 캘린더의 알림표시 여부를 변경한다
+    fun changeNotificationEnabled(enabled: Boolean) {
+        this.notificationEnabled = enabled
     }
 
     companion object {
