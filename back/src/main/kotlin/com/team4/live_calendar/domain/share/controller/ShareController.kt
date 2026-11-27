@@ -44,8 +44,11 @@ class ShareController(
     }
 
     @GetMapping
-    fun findPublicShares(): List<ShareSummaryResponse> =
-        shareService.findPublicShares()
+    fun findPublicShares(
+        @RequestParam(required = false) keyword: String?,
+        @RequestParam(required = false) tag: String?,
+    ): List<ShareSummaryResponse> =
+        shareService.findPublicShares(keyword = keyword, tag = tag)
 
     @GetMapping("/{shareId}")
     fun getDetail(
