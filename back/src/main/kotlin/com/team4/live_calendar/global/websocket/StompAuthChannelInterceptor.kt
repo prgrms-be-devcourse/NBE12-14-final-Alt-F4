@@ -57,16 +57,20 @@ class StompAuthChannelInterceptor(
         return UsernamePasswordAuthenticationToken(userId, null, emptyList())
     }
 
-    // 내가 이용하는 캘린더의 주소만 구독할 수 있다
+    // 정확히 두 주소만 구독할 수 있다: 내가 이용하는 캘린더 주소, 내 표시 주소
+    // 표시 주소는 Spring이 이 뒤에 그 연결 전용 주소(/queue/display-user{세션 id})로 바꿔서 남의 신호를 받을 수 없다
+    // /queue/...를 직접 구독하거나 와일드카드를 쓰면 남의 연결 전용 주소와 맞을 수 있어 막는다
     private fun canSubscribe(accessor: StompHeaderAccessor): Boolean {
         val userId = accessor.user?.name?.toLongOrNull() ?: return false
         val destination = accessor.destination ?: return false
+        if (destination == SyncSignalListener.USER_DISPLAY_QUEUE) return true
         val match = CALENDAR_TOPIC.matchEntire(destination) ?: return false
         val calendarId = match.groupValues[1].toLongOrNull() ?: return false
         return subscribeRepository.existsByUserIdAndCalendarId(userId, calendarId)
     }
 
     // 클라이언트는 서버 코드 주소(/app/...)로만 보낼 수 있다
+    // /user/{남}/queue/display로 보내면 남의 모든 연결에 가므로 꼭 막아야 한다
     private fun canSend(accessor: StompHeaderAccessor): Boolean =
         accessor.destination?.startsWith("/app/") == true
 

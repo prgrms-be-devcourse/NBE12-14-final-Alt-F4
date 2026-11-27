@@ -14,6 +14,7 @@ import com.team4.live_calendar.domain.event.repository.EventRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
 import com.team4.live_calendar.global.websocket.CalendarChangedEvent
+import com.team4.live_calendar.global.websocket.DisplayChangedEvent
 import com.team4.live_calendar.global.websocket.SyncType
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.repository.findByIdOrNull
@@ -80,6 +81,8 @@ class CategoryService(
         val category = findCategory(categoryId)
         val subscribe = subscribeRepository.findForUpdate(userId, requireNotNull(category.calendar.id))
             ?: throw BusinessException(ErrorCode.FORBIDDEN)
+        // 내 화면만 바뀌므로 캘린더 신호가 아니라 내 다른 기기에만 알린다 (이미 숨겼어도 한 번)
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         val option = categoryOptionRepository.findBySubscribeIdAndCategoryId(requireNotNull(subscribe.id), categoryId)
         if (option != null) {
             option.hide()
@@ -97,6 +100,7 @@ class CategoryService(
         val category = findCategory(categoryId)
         val subscribe = subscribeRepository.findForUpdate(userId, requireNotNull(category.calendar.id))
             ?: throw BusinessException(ErrorCode.FORBIDDEN)
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         categoryOptionRepository.deleteOfSubscribe(requireNotNull(subscribe.id), categoryId)
     }
 

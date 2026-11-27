@@ -26,6 +26,7 @@ import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
 import com.team4.live_calendar.global.websocket.CalendarChangedEvent
+import com.team4.live_calendar.global.websocket.DisplayChangedEvent
 import com.team4.live_calendar.global.websocket.SyncType
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.repository.findByIdOrNull
@@ -77,7 +78,10 @@ class CalendarService(
             role = CalendarRole.OWNER,
             color = null,
         )
-        return CalendarResponse.from(subscribeRepository.save(owner))
+        val saved = subscribeRepository.save(owner)
+        // 새 캘린더는 아직 구독자가 없어 캘린더 신호는 보내지 않고, 내 다른 기기에만 알린다
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
+        return CalendarResponse.from(saved)
     }
 
     // 이용 관계가 있으면 역할과 상관없이 볼 수 있다 (SUBSCRIBER 포함)
@@ -100,6 +104,7 @@ class CalendarService(
     @Transactional
     fun moveGroup(userId: Long, calendarId: Long, request: CalendarGroupMoveRequest): CalendarResponse {
         val subscribe = findMySubscribe(userId, findCalendar(calendarId))
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         subscribe.moveTo(findMyGroup(userId, requireNotNull(request.groupId)))
         return CalendarResponse.from(subscribe)
     }
@@ -109,6 +114,7 @@ class CalendarService(
     @Transactional
     fun changeDisplay(userId: Long, calendarId: Long, request: CalendarDisplayRequest) {
         val subscribe = findMySubscribe(userId, findCalendar(calendarId))
+        eventPublisher.publishEvent(DisplayChangedEvent(userId))
         subscribe.changeDisplay(requireNotNull(request.isVisible), request.color)
     }
 

@@ -187,6 +187,18 @@ abstract class StompTestSupport {
         }
     }
 
+    // 그 사람의 표시 주소로 TEST를 보낸다 (convertAndSend("/user/queue/display")는 "queue"라는 사람에게 가서 아무도 못 받는다)
+    protected fun sendDisplaySignal(user: User) =
+        messagingTemplate.convertAndSendToUser(user.id.toString(), SyncSignalListener.DISPLAY_QUEUE, SIGNAL)
+
+    // 표시 구독 등록도 비동기라 받을 때까지 TEST를 다시 보낸다 (같은 사람의 다른 연결에도 간다)
+    protected fun assertReceivesDisplay(user: User, received: BlockingQueue<String>) {
+        await().atMost(Duration.ofSeconds(5)).until {
+            sendDisplaySignal(user)
+            received.poll(100, TimeUnit.MILLISECONDS) != null
+        }
+    }
+
     // 아무 메시지도 오지 않아야 한다 (TEST 포함. 거절된 구독이 TEST를 못 받는지 볼 때 쓴다)
     protected fun assertNothingReceived(received: BlockingQueue<String>) =
         assertNull(received.poll(500, TimeUnit.MILLISECONDS))

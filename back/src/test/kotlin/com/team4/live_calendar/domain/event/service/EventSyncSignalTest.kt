@@ -11,6 +11,7 @@ import com.team4.live_calendar.domain.event.dto.RecurrenceScope
 import com.team4.live_calendar.domain.user.entity.User
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.websocket.CalendarChangedEvent
+import com.team4.live_calendar.global.websocket.DisplayChangedEvent
 import com.team4.live_calendar.global.websocket.SyncType
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.BeforeEach
@@ -278,7 +279,7 @@ class EventSyncSignalTest(
     }
 
     @Test
-    fun `일정 숨김과 복원은 캘린더 신호를 보내지 않는다`() {
+    fun `일정 숨김과 복원은 캘린더 신호 대신 내 표시 신호를 보낸다`() {
         // given
         val event = createTimed()
         events.clear()
@@ -287,8 +288,12 @@ class EventSyncSignalTest(
         eventService.hide(owner.id!!, event.id)
         eventService.show(owner.id!!, event.id)
 
-        // then
+        // then: 내 화면만 바뀌므로 다른 사람에게 가는 캘린더 신호는 없다
         assertEquals(0, signals().size)
+        assertEquals(
+            listOf(owner.id!!, owner.id!!),
+            events.stream(DisplayChangedEvent::class.java).map { it.userId }.toList(),
+        )
     }
 
     // ===== 도우미 =====
