@@ -31,4 +31,10 @@ interface NotificationRepository : JpaRepository<Notification, Long> {
         eventHistoryId: Long,
     ): Boolean
 
+    fun findByUserIdAndEventHistoryId(userId: Long, eventHistoryId: Long): Notification?
+
+    @Modifying
+    @Query("update Notification n set n.isRead = true where n.user.id = :userId and n.isRead = false")
+    fun markAllReadByUserId(@Param("userId") userId: Long): Int
+
 }

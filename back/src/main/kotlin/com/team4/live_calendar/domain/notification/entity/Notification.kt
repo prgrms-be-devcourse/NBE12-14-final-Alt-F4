@@ -66,6 +66,10 @@ class Notification protected constructor(
     var isRead: Boolean = false
         protected set
 
+    fun markRead() {
+        isRead = true
+    }
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     lateinit var createdAt: Instant

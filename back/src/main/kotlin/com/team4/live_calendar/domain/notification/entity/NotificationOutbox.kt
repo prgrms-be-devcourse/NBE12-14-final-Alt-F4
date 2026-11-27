@@ -17,6 +17,7 @@ import org.hibernate.type.SqlTypes
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
 import java.time.Instant
+import java.time.Duration
 
 @Entity
 @EntityListeners(AuditingEntityListener::class)
@@ -60,6 +61,42 @@ class NotificationOutbox protected constructor(
     @Column(name = "error_message", columnDefinition = "TEXT")
     var errorMessage: String? = null
         protected set
+
+    fun markProcessing(now: Instant) {
+        status = NotificationOutboxStatus.PROCESSING
+        lockedAt = now
+        errorMessage = null
+    }
+
+    fun markCompleted(now: Instant) {
+        status = NotificationOutboxStatus.COMPLETED
+        processedAt = now
+        lockedAt = null
+        nextRetryAt = null
+        errorMessage = null
+    }
+
+    fun markRetry(now: Instant, error: String, delay: Duration, maxRetries: Int) {
+        retryCount += 1
+        lockedAt = null
+        errorMessage = error.take(2000)
+        if (retryCount >= maxRetries) {
+            status = NotificationOutboxStatus.FAILED
+            nextRetryAt = null
+            processedAt = now
+        } else {
+            status = NotificationOutboxStatus.PENDING
+            nextRetryAt = now.plus(delay)
+        }
+    }
+
+    fun recover(now: Instant, staleBefore: Instant) {
+        if (status == NotificationOutboxStatus.PROCESSING && lockedAt?.isBefore(staleBefore) == true) {
+            status = NotificationOutboxStatus.PENDING
+            lockedAt = null
+            nextRetryAt = now
+        }
+    }
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
