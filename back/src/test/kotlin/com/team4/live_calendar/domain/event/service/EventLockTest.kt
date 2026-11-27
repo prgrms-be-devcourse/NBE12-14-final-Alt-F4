@@ -22,6 +22,7 @@ import com.team4.live_calendar.global.exception.ErrorCode
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.jdbc.core.JdbcTemplate
@@ -56,6 +57,7 @@ class EventLockTest(
 ) {
 
     private val transactionTemplate = TransactionTemplate(transactionManager)
+    private val log = LoggerFactory.getLogger(javaClass)
     private lateinit var pool: ExecutorService
 
     private lateinit var owner: User
@@ -74,15 +76,22 @@ class EventLockTest(
     }
 
     // 스레드가 끝난 뒤 지운다. 커밋된 데이터가 남으면 전체 개수를 세는 다른 테스트가 깨진다
+    // 이미 지운 캘린더(404)가 아닌 실패는 데이터가 남을 수 있어 경고를 남긴다 (테스트는 깨지 않는다)
     @AfterEach
     fun cleanUp() {
         pool.shutdownNow()
         pool.awaitTermination(10, TimeUnit.SECONDS)
-        runCatching { calendarService.delete(owner.id!!, calendar.id!!) }
+        runCatching { calendarService.delete(owner.id!!, calendar.id!!) }.onFailure { e ->
+            if ((e as? BusinessException)?.errorCode != ErrorCode.CALENDAR_NOT_FOUND) {
+                log.warn("테스트 정리: 캘린더 {} 삭제 실패, 데이터가 남을 수 있다", calendar.id, e)
+            }
+        }
         runCatching { subscribeRepository.delete(subscribe) }
         runCatching { calendarGroupRepository.delete(group) }
         runCatching { calendarRepository.delete(calendar) }
-        runCatching { userRepository.delete(owner) }
+        runCatching { userRepository.delete(owner) }.onFailure { e ->
+            log.warn("테스트 정리: 회원 {} 삭제 실패, 데이터가 남을 수 있다", owner.id, e)
+        }
     }
 
     private fun kst(dateTime: String) = OffsetDateTime.parse("${dateTime}:00+09:00")
@@ -247,10 +256,10 @@ class EventLockTest(
         val first = runCatching { future1.get(15, TimeUnit.SECONDS) }
         val second = runCatching { future2.get(15, TimeUnit.SECONDS) }
 
-        // then: 캘린더 삭제는 성공, 회차 수정은 성공하거나 404 (데드락·500 아님)
+        // then: 캘린더 삭제는 성공, 회차 수정은 잠금 뒤 일정이 이미 지워져 404 (데드락·500 아님)
         // 잠금이 없으면 요청2가 일정 줄을 잡고 event_exceptions에 넣다가 요청1과 서로 기다려 데드락이 난다
         assertTrue(first.isSuccess, "요청1(캘린더 삭제) 실패: ${first.cause()}")
-        assertTrue(second.isSuccess || second.cause() is BusinessException, "요청2(회차 수정) 결과: ${second.cause()}")
+        assertEquals(ErrorCode.EVENT_NOT_FOUND, (second.cause() as? BusinessException)?.errorCode, "요청2(회차 수정) 결과: ${second.cause()}")
         assertFalse(calendarRepository.existsById(calendar.id!!))
     }
 }
