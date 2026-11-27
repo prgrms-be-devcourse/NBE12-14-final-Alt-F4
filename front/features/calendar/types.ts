@@ -8,6 +8,8 @@ export type CalendarSummary = {
   name: string;
   color: string | null; // 내 화면 색이 있으면 그것, 없으면 원본 색
   role: CalendarRole;
+  isVisible: boolean; // 내 화면에 보일지 (사이드바 체크박스). 끈 캘린더의 일정은 서버가 빼고 준다
+  myColor: string | null; // 내가 정한 색 (없으면 null)
   categories: CategorySummary[];
 };
 
