@@ -33,6 +33,7 @@ app:
   sqids:
     room-alphabet: 9T1CV48Z7FQGS0KY3HMBAJWNXD2PR6E5
     user-alphabet: D7KS2RHYQ3FEAX1BJGZVT5WMNC694P80
+    share-alphabet: K0DT7M1EV8N2FW9P3GXAQ4HYBR5JZCS6
 
 jwt:
   secret: test-only-secret-key-not-for-production-0123456789

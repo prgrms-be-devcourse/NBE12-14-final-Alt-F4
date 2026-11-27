@@ -4,6 +4,7 @@ import com.team4.live_calendar.domain.calendar.entity.CalendarRole
 import com.team4.live_calendar.domain.calendar.repository.CalendarRepository
 import com.team4.live_calendar.domain.calendar.repository.SubscribeRepository
 import com.team4.live_calendar.domain.share.dto.ShareCreateRequest
+import com.team4.live_calendar.domain.share.dto.ShareDetailResponse
 import com.team4.live_calendar.domain.share.entity.ShareCalendarConnection
 import com.team4.live_calendar.domain.share.entity.ShareInfo
 import com.team4.live_calendar.domain.share.repository.ShareCalendarConnectionRepository
@@ -11,6 +12,8 @@ import com.team4.live_calendar.domain.share.repository.ShareInfoRepository
 import com.team4.live_calendar.domain.user.repository.UserRepository
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.exception.ErrorCode
+import com.team4.live_calendar.global.publicid.PublicIds
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -21,6 +24,7 @@ class ShareService(
     private val subscribeRepository: SubscribeRepository,
     private val calendarRepository: CalendarRepository,
     private val userRepository: UserRepository,
+    private val publicIds: PublicIds,
 ) {
     @Transactional
     fun create(userId: Long, request: ShareCreateRequest): Long {
@@ -58,5 +62,15 @@ class ShareService(
         shareCalendarConnectionRepository.saveAll(connections)
 
         return checkNotNull(share.id)
+    }
+
+    @Transactional(readOnly = true)
+    fun getDetail(shareId: Long): ShareDetailResponse {
+        val share = shareInfoRepository.findByIdOrNull(shareId)
+            ?.takeIf { it.isPublic }
+            ?: throw BusinessException(ErrorCode.SHARE_NOT_FOUND)
+
+        val connections = shareCalendarConnectionRepository.findAllWithCalendarByShareId(shareId)
+        return ShareDetailResponse.from(share, connections, publicIds)
     }
 }
