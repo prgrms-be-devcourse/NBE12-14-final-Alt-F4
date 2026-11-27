@@ -52,4 +52,8 @@ enum class ErrorCode(
     NOT_ROOM_OWNER(HttpStatus.FORBIDDEN, "방장만 할 수 있습니다."),
     INVALID_ROOM_PERIOD(HttpStatus.BAD_REQUEST, "조율 기간이나 시간 범위가 올바르지 않습니다."),
     INVITE_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "유효하지 않은 초대 링크입니다."),
+    ALREADY_ROOM_MEMBER(HttpStatus.CONFLICT, "이미 참여 중인 회원입니다."),
+    DUPLICATE_INVITATION(HttpStatus.CONFLICT, "이미 초대를 보낸 회원입니다."),
+    INVITATION_NOT_FOUND(HttpStatus.NOT_FOUND, "초대를 찾을 수 없습니다."),
+    INVITATION_ALREADY_RESPONDED(HttpStatus.CONFLICT, "이미 응답한 초대입니다."),
 }
