@@ -1,10 +1,11 @@
 "use client";
 
-import { Bell, CalendarDays, Compass, LogIn, Users } from "lucide-react";
+import { CalendarDays, Compass, LogIn, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ComponentType } from "react";
 import { useMe, useSessionStatus } from "@/features/auth/hooks";
+import { NotificationBell } from "@/features/notification/components/NotificationBell";
 import { useLogout } from "@/features/auth/useLogout";
 import { restoreSession } from "@/shared/api/session";
 import { cn } from "@/shared/lib/cn";
@@ -60,16 +61,7 @@ export function AppRail() {
       <div className="flex-1" />
       {status === "authenticated" ? (
         <>
-          {/* 알림 API가 정해지면 패널을 붙인다 */}
-          <button
-            type="button"
-            disabled
-            title="알림 (준비 중)"
-            aria-label="알림 (준비 중)"
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400"
-          >
-            <Bell className="h-5 w-5" aria-hidden />
-          </button>
+          <NotificationBell />
           <MenuButton
             ariaLabel={nickname ? `${nickname} 메뉴` : "내 메뉴"}
             label={<span aria-hidden>{nickname.slice(0, 1) || "나"}</span>}
