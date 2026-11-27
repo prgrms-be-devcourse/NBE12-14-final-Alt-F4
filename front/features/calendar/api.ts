@@ -41,6 +41,11 @@ export function moveCalendarGroup({ id, groupId }: { id: number; groupId: number
   return api<CalendarDetail>(`/api/v1/calendars/${id}/group`, { method: "PATCH", body: { groupId } });
 }
 
+// 내 화면에서 보일지와 내 색 (역할과 상관없이). 모든 칸 보내기: color를 빼면 내 색이 지워지므로 지금 myColor를 같이 보낸다
+export function changeCalendarDisplay({ id, isVisible, color }: { id: number; isVisible: boolean; color: string | null }) {
+  return api<void>(`/api/v1/calendars/${id}/display`, { method: "PATCH", body: { isVisible, color } });
+}
+
 // OWNER만. 일정·카테고리·다른 사람의 이용 관계까지 모두 지운다 (되돌릴 수 없음)
 export function deleteCalendar(id: number) {
   return api<void>(`/api/v1/calendars/${id}`, { method: "DELETE" });
