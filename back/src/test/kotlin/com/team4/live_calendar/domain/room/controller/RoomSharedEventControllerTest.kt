@@ -366,6 +366,7 @@ class RoomSharedEventControllerTest(
                 location = null,
                 startAt = OffsetDateTime.parse("2026-11-26T14:00:00+09:00"),
                 endAt = OffsetDateTime.parse("2026-11-26T15:00:00+09:00"),
+                version = 0,
             ),
         )
 

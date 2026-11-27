@@ -359,6 +359,7 @@ class EventSyncSignalTest(
         end: String,
         rrule: String? = "FREQ=WEEKLY;BYDAY=MO",
         timezone: String? = null,
+        version: Long = 0,
     ) = EventUpdateRequest(
         categoryId = null,
         title = "제목 변경",
@@ -368,9 +369,10 @@ class EventSyncSignalTest(
         endAt = kst(end),
         timezone = timezone,
         rrule = rrule,
+        version = version,
     )
 
-    private fun allDayUpdate(date: String, rrule: String?) = EventUpdateRequest(
+    private fun allDayUpdate(date: String, rrule: String?, version: Long = 0) = EventUpdateRequest(
         categoryId = null,
         title = "종일로",
         description = null,
@@ -379,5 +381,6 @@ class EventSyncSignalTest(
         startDate = LocalDate.parse(date),
         endDate = LocalDate.parse(date),
         rrule = rrule,
+        version = version,
     )
 }

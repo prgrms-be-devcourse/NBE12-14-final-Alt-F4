@@ -96,6 +96,11 @@ class Event protected constructor(
     var recurUntil: Instant? = null
         protected set
 
+    // 충돌 감지용 버전. JPA @Version이 아니라 서비스가 markChanged()로 직접 올린다
+    @Column(name = "version", nullable = false)
+    var version: Long = 0
+        protected set
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     lateinit var createdAt: Instant
@@ -130,6 +135,11 @@ class Event protected constructor(
         this.timezone = timezone
         this.rrule = rrule
         this.recurUntil = recurUntil
+    }
+
+    // 수정·회차 변경마다 부른다 (충돌 감지용)
+    fun markChanged() {
+        version += 1
     }
 
     companion object {

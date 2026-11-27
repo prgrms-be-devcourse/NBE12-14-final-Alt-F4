@@ -27,6 +27,7 @@ enum class ErrorCode(
     INVALID_RECURRENCE(HttpStatus.BAD_REQUEST, "반복 규칙이 올바르지 않습니다."),
     RECURRENCE_SCOPE_REQUIRED(HttpStatus.BAD_REQUEST, "반복 일정은 수정·삭제 범위(scope)를 지정해야 합니다."),
     OCCURRENCE_NOT_FOUND(HttpStatus.NOT_FOUND, "반복 일정의 해당 회차를 찾을 수 없습니다."),
+    EVENT_VERSION_CONFLICT(HttpStatus.CONFLICT, "다른 곳에서 먼저 수정했습니다. 최신 내용을 다시 불러와 주세요."),
 
     // 공유
     SHARE_NOT_FOUND(HttpStatus.NOT_FOUND, "공유 항목을 찾을 수 없습니다."),

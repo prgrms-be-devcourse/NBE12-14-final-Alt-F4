@@ -1,6 +1,7 @@
 package com.team4.live_calendar.domain.event.dto
 
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -8,6 +9,7 @@ import java.time.OffsetDateTime
 // 일정 내용 전체 수정. 캘린더 이동은 지원하지 않는다
 // 시간 일정은 startAt, endAt / 종일 일정은 isAllDay=true + startDate, endDate
 // rrule을 보내지 않으면 반복이 해제되므로, 반복을 유지하려면 기존 rrule을 같이 보낸다
+// version은 필수: 받은 일정의 version을 그대로 보낸다 (반복 일정은 범위와 상관없이 시리즈의 version). 다르면 409
 // 반복 일정은 scope 파라미터가 필요하다
 // - scope=ALL: 반복 일정 자체의 값(첫 회차 기준, GET /events/{id} 응답)을 보낸다. 클릭한 회차의 시간을 보내면 반복의 시작이 그 회차로 옮겨지고,
 //   시간이 바뀐 것으로 판단돼 이 일정만 수정·삭제한 회차들도 원래대로 돌아간다
@@ -43,4 +45,8 @@ class EventUpdateRequest(
 
     // 없거나 비어 있으면 반복 해제
     val rrule: String? = null,
+
+    // 받은 일정의 version. 다르면 409, 반복 일정은 범위와 상관없이 시리즈의 version
+    @field:NotNull
+    val version: Long? = null,
 )

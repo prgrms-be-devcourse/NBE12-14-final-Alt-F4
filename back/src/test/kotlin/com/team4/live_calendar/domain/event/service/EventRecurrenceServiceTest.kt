@@ -87,6 +87,7 @@ class EventRecurrenceServiceTest(
         timezone: String? = null,
         startAt: OffsetDateTime = mondayStart,
         endAt: OffsetDateTime = mondayEnd,
+        version: Long = 0,
     ) = EventUpdateRequest(
         categoryId = null,
         title = "주간 회의",
@@ -96,6 +97,7 @@ class EventRecurrenceServiceTest(
         endAt = endAt,
         timezone = timezone,
         rrule = rrule,
+        version = version,
     )
 
     private fun assertErrorCode(expected: ErrorCode, block: () -> Unit) {
