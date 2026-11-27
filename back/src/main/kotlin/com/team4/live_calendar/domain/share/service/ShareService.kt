@@ -5,6 +5,7 @@ import com.team4.live_calendar.domain.calendar.repository.CalendarRepository
 import com.team4.live_calendar.domain.calendar.repository.SubscribeRepository
 import com.team4.live_calendar.domain.share.dto.ShareCreateRequest
 import com.team4.live_calendar.domain.share.dto.ShareDetailResponse
+import com.team4.live_calendar.domain.share.dto.ShareSummaryResponse
 import com.team4.live_calendar.domain.share.entity.ShareCalendarConnection
 import com.team4.live_calendar.domain.share.entity.ShareInfo
 import com.team4.live_calendar.domain.share.repository.ShareCalendarConnectionRepository
@@ -73,4 +74,9 @@ class ShareService(
         val connections = shareCalendarConnectionRepository.findAllWithCalendarByShareId(shareId)
         return ShareDetailResponse.from(share, connections, publicIds)
     }
+
+    @Transactional(readOnly = true)
+    fun findPublicShares(): List<ShareSummaryResponse> =
+        shareInfoRepository.findAllByIsPublicTrueOrderByCreatedAtDescIdDesc()
+            .map { share -> ShareSummaryResponse.from(share, publicIds) }
 }

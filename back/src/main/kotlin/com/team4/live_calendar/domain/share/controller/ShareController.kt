@@ -6,6 +6,7 @@ import com.team4.live_calendar.domain.calendar.service.SubscribeService
 import com.team4.live_calendar.domain.share.dto.ShareCreateRequest
 import com.team4.live_calendar.domain.share.dto.ShareCreateResponse
 import com.team4.live_calendar.domain.share.dto.ShareDetailResponse
+import com.team4.live_calendar.domain.share.dto.ShareSummaryResponse
 import com.team4.live_calendar.domain.share.service.ShareService
 import com.team4.live_calendar.global.exception.BusinessException
 import com.team4.live_calendar.global.security.CurrentUserId
@@ -37,6 +38,10 @@ class ShareController(
         val shareId = shareService.create(userId, request)
         return ShareCreateResponse(shareId = publicIds.share.encode(shareId))
     }
+
+    @GetMapping
+    fun findPublicShares(): List<ShareSummaryResponse> =
+        shareService.findPublicShares()
 
     @GetMapping("/{shareId}")
     fun getDetail(
