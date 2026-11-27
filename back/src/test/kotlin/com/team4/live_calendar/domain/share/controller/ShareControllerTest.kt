@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.post
 import org.springframework.transaction.annotation.Transactional
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import java.time.Instant
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -305,5 +306,54 @@ class ShareControllerTest(
             status { isNotFound() }
             jsonPath("$.code") { value("PUBLIC_SHARE_CALENDAR_NOT_FOUND") }
         }
+    }
+
+    @Test
+    fun `공유 탐색은 공개 항목만 최신순으로 반환한다`() {
+        val owner = persist(User.signUp("owner@mail.com", "{bcrypt}hash", "공유자"))
+        val reader = persist(User.signUp("reader@mail.com", "{bcrypt}hash", "조회자"))
+        val recent = persist(ShareInfo.create(owner, "최근 공유", null, "일정 소개", isPublic = true))
+        val older = persist(ShareInfo.create(owner, "이전 공유", null, null, isPublic = true))
+        persist(ShareInfo.create(owner, "비공개 공유", null, null, isPublic = false))
+
+        em.flush()
+        setShareCreatedAt(recent, Instant.parse("2026-11-02T00:00:00Z"))
+        setShareCreatedAt(older, Instant.parse("2026-11-01T00:00:00Z"))
+        em.clear()
+
+        getShareList(reader).andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(2) }
+            jsonPath("$[0].shareId") { value(publicIds.share.encode(checkNotNull(recent.id))) }
+            jsonPath("$[0].title") { value("최근 공유") }
+            jsonPath("$[0].content") { value("일정 소개") }
+            jsonPath("$[1].shareId") { value(publicIds.share.encode(checkNotNull(older.id))) }
+            jsonPath("$[1].title") { value("이전 공유") }
+        }
+    }
+
+    @Test
+    fun `공개 공유 항목이 없으면 빈 배열을 반환한다`() {
+        val reader = persist(User.signUp("reader@mail.com", "{bcrypt}hash", "조회자"))
+        persist(ShareInfo.create(reader, "내 비공개 공유", null, null, isPublic = false))
+
+        getShareList(reader).andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(0) }
+        }
+    }
+
+    private fun getShareList(user: User) =
+        mockMvc.get("/api/v1/shares") {
+            with(authentication(
+                UsernamePasswordAuthenticationToken(checkNotNull(user.id).toString(), null, emptyList()),
+            ))
+        }
+
+    private fun setShareCreatedAt(share: ShareInfo, createdAt: Instant) {
+        em.createQuery("update ShareInfo s set s.createdAt = :createdAt where s.id = :shareId")
+            .setParameter("createdAt", createdAt)
+            .setParameter("shareId", checkNotNull(share.id))
+            .executeUpdate()
     }
 }
