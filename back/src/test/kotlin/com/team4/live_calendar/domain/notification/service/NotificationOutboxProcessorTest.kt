@@ -21,6 +21,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
 
 @SpringBootTest
 @Transactional
@@ -55,10 +56,11 @@ class NotificationOutboxProcessorTest(
                 mapOf("title" to "공유 일정"),
             )
         )
-        val outbox = outboxService.save(history)
+        outboxService.save(history)
         entityManager.flush()
 
         val claimedId = assertNotNull(outboxService.claimNext())
+        assertNull(outboxService.claimNext())
         entityManager.clear()
         outboxProcessor.process(claimedId)
 
@@ -74,6 +76,85 @@ class NotificationOutboxProcessorTest(
         assertEquals(1, notifications.totalElements)
         assertEquals(NotificationType.EVENT_CREATED, notifications.content.single().type)
         assertEquals(NotificationOutboxStatus.COMPLETED, outboxRepository.findById(claimedId).orElseThrow().status)
+    }
+
+    @Test
+    fun `수정과 삭제 이력은 각각 대응하는 알림 유형으로 생성된다`() {
+        val actor = persist(User.signUp("action-actor@mail.com", "{bcrypt}hash", "작성자"))
+        val recipient = persist(User.signUp("action-recipient@mail.com", "{bcrypt}hash", "수신자"))
+        val calendar = persist(Calendar.create("공유 캘린더", null, null))
+        addSubscribe(actor, calendar, CalendarRole.OWNER, "action-actor-group")
+        addSubscribe(recipient, calendar, CalendarRole.SUBSCRIBER, "action-recipient-group")
+
+        listOf(
+            EventHistoryActionType.UPDATE to NotificationType.EVENT_UPDATED,
+            EventHistoryActionType.DELETE to NotificationType.EVENT_DELETED,
+        ).forEachIndexed { index, (actionType, notificationType) ->
+            val history = persist(
+                EventHistory.create(
+                    calendar,
+                    80L + index,
+                    actor,
+                    EventHistoryTargetType.EVENT,
+                    null,
+                    actionType,
+                    "일정 $index",
+                )
+            )
+            outboxService.save(history)
+            entityManager.flush()
+
+            val claimedId = assertNotNull(outboxService.claimNext())
+            entityManager.clear()
+            outboxProcessor.process(claimedId)
+            entityManager.clear()
+
+            val notification = notificationRepository.findByUserIdAndEventHistoryId(
+                checkNotNull(recipient.id),
+                checkNotNull(history.id),
+            )
+            assertNotNull(notification)
+            assertEquals(notificationType, notification.type)
+        }
+    }
+
+    @Test
+    fun `처리 실패는 재시도 정보를 기록하고 오래된 잠금은 대기 상태로 복구한다`() {
+        val actor = persist(User.signUp("retry-actor@mail.com", "{bcrypt}hash", "작성자"))
+        val calendar = persist(Calendar.create("복구 캘린더", null, null))
+        val history = persist(
+            EventHistory.create(
+                calendar,
+                90L,
+                actor,
+                EventHistoryTargetType.EVENT,
+                null,
+                EventHistoryActionType.CREATE,
+                "재시도 일정",
+            )
+        )
+        outboxService.save(history)
+        entityManager.flush()
+
+        val claimedId = assertNotNull(outboxService.claimNext())
+        entityManager.clear()
+        outboxService.markRetry(claimedId, "일시적 오류")
+        entityManager.clear()
+
+        val retrying = outboxRepository.findById(claimedId).orElseThrow()
+        assertEquals(NotificationOutboxStatus.PENDING, retrying.status)
+        assertEquals(1, retrying.retryCount)
+        assertEquals("일시적 오류", retrying.errorMessage)
+        assertNotNull(retrying.nextRetryAt)
+
+        retrying.markProcessing(java.time.Instant.now().minusSeconds(600))
+        entityManager.flush()
+        assertEquals(1, outboxService.recoverStale())
+        entityManager.clear()
+
+        val recovered = outboxRepository.findById(claimedId).orElseThrow()
+        assertEquals(NotificationOutboxStatus.PENDING, recovered.status)
+        assertNull(recovered.lockedAt)
     }
 
     private fun <T : Any> persist(entity: T): T = entity.also { entityManager.persist(it) }
