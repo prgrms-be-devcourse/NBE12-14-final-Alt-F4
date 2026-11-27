@@ -186,7 +186,7 @@ class ShareCalendarPreviewControllerTest(
         calendar: Calendar,
         to: String = "2026-11-30T15:00:00Z",
     ) = mockMvc.get(
-        "/api/v1/shares/{shareId}/calendars/{calendarId}/preview",
+        "/api/v1/shares/{shareId}/calendars/{calendarId}",
         publicIds.share.encode(checkNotNull(share.id)),
         checkNotNull(calendar.id),
     ) {

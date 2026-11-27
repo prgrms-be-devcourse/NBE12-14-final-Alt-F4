@@ -58,7 +58,7 @@ class ShareController(
     }
 
     // 월간 화면에 필요한 기간 [from, to)의 일정과 캘린더의 카테고리를 조회한다.
-    @GetMapping("/{shareId}/calendars/{calendarId}/preview")
+    @GetMapping("/{shareId}/calendars/{calendarId}")
     fun getCalendarPreview(
         @PathVariable("shareId") shareCode: String,
         @PathVariable calendarId: Long,
