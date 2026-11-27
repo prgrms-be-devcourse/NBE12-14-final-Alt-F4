@@ -81,6 +81,13 @@ class SubscribeService(
     }
 
     @Transactional
+    fun changeNotificationEnabled(userId: Long, calendarId: Long, enabled: Boolean) {
+        val subscription = subscribeRepository.findForUpdate(userId, calendarId)
+            ?: throw BusinessException(ErrorCode.SUBSCRIPTION_NOT_FOUND)
+        subscription.changeNotificationEnabled(enabled)
+    }
+
+    @Transactional
     fun subscribeBatchFromShare(
         userId: Long,
         shareId: Long,

@@ -22,6 +22,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.patch
 import org.springframework.http.MediaType
 import org.springframework.transaction.annotation.Transactional
 import kotlin.test.assertEquals
@@ -50,6 +51,55 @@ class SubscribeControllerTest(
         }.andExpect {
             status { isNoContent() }
             content { string("") }
+        }
+    }
+
+    @Test
+    fun `OWNER와 SUBSCRIBER는 알림 설정을 바꿀 수 있고 표시 설정과 독립적이다`() {
+        val subscriber = persist(User.signUp("notify-subscriber@mail.com", "{bcrypt}hash", "구독자"))
+        val subscriberCalendarId = createSubscribedCalendar(subscriber)
+        val subscriberRelation = subscribeRepository.findByUserIdAndCalendarId(checkNotNull(subscriber.id), subscriberCalendarId)
+        subscriberRelation?.changeDisplay(false, null)
+
+        val owner = persist(User.signUp("notify-owner@mail.com", "{bcrypt}hash", "소유자"))
+        val ownerCalendar = persist(Calendar.create("소유 캘린더", null, null))
+        val ownerGroup = persist(CalendarGroup.create(owner, "소유자 그룹", null))
+        persist(Subscribe.create(owner, ownerGroup, ownerCalendar, CalendarRole.OWNER, null))
+
+        mockMvc.patch("/api/v1/calendars/$subscriberCalendarId/notification") {
+            with(loginAs(subscriber))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"notificationEnabled": false}"""
+        }.andExpect { status { isNoContent() } }
+
+        mockMvc.patch("/api/v1/calendars/${ownerCalendar.id}/notification") {
+            with(loginAs(owner))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"notificationEnabled": false}"""
+        }.andExpect { status { isNoContent() } }
+
+        val updatedSubscriber = subscribeRepository.findByUserIdAndCalendarId(checkNotNull(subscriber.id), subscriberCalendarId)
+        val updatedOwner = subscribeRepository.findByUserIdAndCalendarId(checkNotNull(owner.id), checkNotNull(ownerCalendar.id))
+        assertEquals(false, updatedSubscriber?.notificationEnabled)
+        assertEquals(false, updatedSubscriber?.isVisible)
+        assertEquals(CalendarRole.SUBSCRIBER, updatedSubscriber?.role)
+        assertEquals(false, updatedOwner?.notificationEnabled)
+        assertEquals(CalendarRole.OWNER, updatedOwner?.role)
+    }
+
+    @Test
+    fun `다른 사용자의 캘린더 알림 설정은 변경할 수 없다`() {
+        val subscriber = persist(User.signUp("notify-owner@mail.com", "{bcrypt}hash", "구독자"))
+        val requester = persist(User.signUp("notify-requester@mail.com", "{bcrypt}hash", "요청자"))
+        val calendarId = createSubscribedCalendar(subscriber)
+
+        mockMvc.patch("/api/v1/calendars/$calendarId/notification") {
+            with(loginAs(requester))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"notificationEnabled": false}"""
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("SUBSCRIPTION_NOT_FOUND") }
         }
     }
 

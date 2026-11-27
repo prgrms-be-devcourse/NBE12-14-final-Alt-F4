@@ -23,6 +23,9 @@ spring:
       replace: none
 
 app:
+  notification:
+    outbox-worker:
+      enabled: false
   cors:
     allowed-origins:
       - http://localhost:3000

@@ -75,6 +75,10 @@ class Subscribe protected constructor(
     var isVisible: Boolean = true
         protected set
 
+    @Column(name = "notification_enabled", nullable = false)
+    var notificationEnabled: Boolean = true
+        protected set
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     lateinit var createdAt: Instant
@@ -95,6 +99,11 @@ class Subscribe protected constructor(
     fun changeDisplay(isVisible: Boolean, color: String?) {
         this.isVisible = isVisible
         this.color = color
+    }
+
+    // 캘린더의 알림표시 여부를 변경한다
+    fun changeNotificationEnabled(enabled: Boolean) {
+        this.notificationEnabled = enabled
     }
 
     companion object {

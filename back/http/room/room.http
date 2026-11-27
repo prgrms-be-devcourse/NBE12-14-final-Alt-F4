@@ -60,7 +60,7 @@ Authorization: Bearer {{accessToken}}
     client.global.set("inviteToken", response.body.token);
 %}
 
-# ※ 아래 두 요청은 다른 계정으로 확인한다: auth.http에서 두 번째 계정으로 가입·로그인하면 accessToken이 바뀐다.
+### ※ 아래 두 요청은 다른 계정으로 확인한다: auth.http에서 두 번째 계정으로 가입·로그인하면 accessToken이 바뀐다.
 
 ### 초대 확인 (200) - 참여하지 않는다
 GET {{baseUrl}}/api/v1/invite-links/{{inviteToken}}
@@ -75,7 +75,7 @@ Content-Type: application/json
   "groupId": {{groupId}}
 }
 
-# ※ 폐기는 방장 계정으로 다시 로그인한 뒤 보낸다. 폐기 후에는 위 확인·수락이 404 INVITE_LINK_NOT_FOUND가 된다(이미 참여한 회원은 그대로).
+### ※ 폐기는 방장 계정으로 다시 로그인한 뒤 보낸다. 폐기 후에는 위 확인·수락이 404 INVITE_LINK_NOT_FOUND가 된다(이미 참여한 회원은 그대로).
 
 ### 초대 링크 폐기 (204, 방장)
 DELETE {{baseUrl}}/api/v1/rooms/{{roomId}}/invite-links
@@ -104,7 +104,7 @@ Content-Type: application/json
   "inviteeTag": "{{inviteeTag}}"
 }
 
-# ※ 아래 두 요청은 초대받은 계정으로 로그인한 뒤 실행한다.
+### ※ 아래 두 요청은 초대받은 계정으로 로그인한 뒤 실행한다.
 
 ### 내가 받은 초대 (200) - 대기 중이고 아직 참여하지 않은 방만
 GET {{baseUrl}}/api/v1/invitations
