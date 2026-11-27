@@ -199,10 +199,11 @@ function InfoRow({ label, children }: { label: string; children: ReactNode }) {
 }
 
 // 내 화면에서 이 캘린더를 넣어 둘 그룹 (누구나, 나에게만 적용)
-// 고른 값을 따로 들고 있어서 다시 불러오는 동안 옛 그룹으로 튀지 않는다
+// 보이는 값은 서버 값(캘린더 상세)이라 다른 기기에서 옮겨도 따라간다
+// 옮기는 동안(다시 불러오기까지)은 고른 값을 보여 줘서 옛 그룹으로 튀지 않는다. 실패하면 서버 값으로 돌아간다
 function GroupSection({ calendar, groups }: { calendar: CalendarDetail; groups: CalendarGroup[] }) {
   const move = useMoveCalendarGroup();
-  const [selected, setSelected] = useState(calendar.groupId);
+  const selected = move.isPending && move.variables ? move.variables.groupId : calendar.groupId;
 
   return (
     <section className={`${cardClass} flex flex-col gap-3`}>
@@ -214,8 +215,7 @@ function GroupSection({ calendar, groups }: { calendar: CalendarDetail; groups: 
         disabled={move.isPending || groups.length < 2}
         onChange={(groupId) => {
           if (groupId === selected) return;
-          setSelected(groupId);
-          move.mutate({ id: calendar.id, groupId }, { onError: () => setSelected(calendar.groupId) });
+          move.mutate({ id: calendar.id, groupId });
         }}
         options={groups.map((group) => ({ value: group.id, label: group.name }))}
       />

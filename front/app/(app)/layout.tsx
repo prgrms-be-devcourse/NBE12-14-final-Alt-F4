@@ -1,5 +1,6 @@
 import { Suspense, type ReactNode } from "react";
 import { AuthGuard } from "@/features/auth/components/AuthGuard";
+import { RealtimeSync } from "@/features/sync/RealtimeSync";
 import { Spinner } from "@/shared/ui/Spinner";
 import { AppRail } from "../_components/AppRail";
 
@@ -10,6 +11,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <Suspense fallback={<Spinner fullScreen />}>
       <AuthGuard>
+        <RealtimeSync />
         <div className="flex h-dvh">
           <AppRail />
           <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">{children}</div>
